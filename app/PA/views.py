@@ -1962,14 +1962,29 @@ def hr_index():
     return render_template('staff/HR/PA/pa_index.html')
 
 
-@pa.route('/hr/all-scoresheets')
+@pa.route('/hr/all-scoresheets', methods=['GET', 'POST'])
 @login_required
 @hr_permission.require()
 def scoresheets_for_hr():
-    scoresheets = PAScoreSheet.query.filter(PAScoreSheet.staff == None).all()
-    self_scoresheets = PAScoreSheet.query.filter(PAScoreSheet.staff != None).all()
+    rounds = PARound.query.order_by(PARound.id.desc()).all()
+    round_id = request.args.get('roundid', type=int)
+    all_scoresheet = (
+        db.session.query(PAScoreSheet)
+        .join(PAAgreement)
+    )
+    if round_id:
+        scoresheets = all_scoresheet.filter(PAAgreement.round_id == round_id, PAScoreSheet.staff == None).all()
+        self_scoresheets = all_scoresheet.filter(PAAgreement.round_id == round_id).filter(PAScoreSheet.staff != None).all()
+    else:
+        last_round = PARound.query.order_by(PARound.id.desc()).offset(1).first()
+        scoresheets = all_scoresheet.filter(PAAgreement.round_id == last_round.id, PAScoreSheet.staff == None).all()
+        self_scoresheets = all_scoresheet.filter(PAAgreement.round_id == last_round.id, PAScoreSheet.staff != None).all()
     return render_template('staff/HR/PA/hr_all_scoresheets.html',
-                           scoresheets=scoresheets, self_scoresheets=self_scoresheets)
+                           scoresheets=scoresheets, self_scoresheets=self_scoresheets, round=round_id,
+                           rounds=[{'id': r.id,
+                                    'round': r.desc + ': ' + r.start.strftime('%d/%m/%Y') + '-' + r.end.strftime(
+                                        '%d/%m/%Y')} for r
+                                   in rounds])
 
 
 @pa.route('/hr/all-scoresheets/edit-status/<int:scoresheet_id>')
