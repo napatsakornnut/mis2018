@@ -3226,7 +3226,8 @@ def hr_idp_improvement():
         for item in all_idp_item:
             records.append({
                 'round': item.idp.round.desc,
-                u'ผู้รับการประเมิน': item.idp.staff.fullname,
+                u'ผู้รับการประเมิน': item.idp.staff.personal_info.th_firstname+' '+item.idp.staff.personal_info.th_lastname,
+                u'สังกัด': item.idp.staff.personal_info.parent.org+' '+item.idp.staff.personal_info.org,
                 u'ตำแหน่ง': item.idp.staff.personal_info.job_position,
                 u'สมรรถนะ/ทักษะ ที่ต้องได้รับการพัฒนา': item.plan,
                 u'พฤติกรรม/ผลลัพธ์ ที่คาดหวัง': item.goal,
