@@ -94,7 +94,7 @@ class RoomEvent(db.Model):
     title = db.Column('title', db.String(255), nullable=False)
     start = db.Column('start', db.DateTime(timezone=True), nullable=False)
     end = db.Column('end', db.DateTime(timezone=True), nullable=False)
-    repeat_end_date = db.Column('repeat_end_date', db.DateTime(timezone=True))
+    repeat_end = db.Column('repeat_end', db.DateTime(timezone=True))
     datetime = db.Column(DateTimeRangeType())
     hour = db.Column('hour', db.String(), info={'label': 'จำนวนชั่วโมง', 'choices': [('', 'กรุณาเลือกจำนวนชั่วโมง'),
                                                                                      ('1', '1 ชั่วโมง'),
