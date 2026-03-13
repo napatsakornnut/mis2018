@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
-
+import calendar
 import dateutil.parser
 import arrow
 import pytz
+from datetime import datetime, timedelta
 from dateutil import parser
 from flask import render_template, jsonify, request, flash, redirect, url_for, current_app, make_response
 from flask_login import login_required, current_user
@@ -29,6 +29,25 @@ def send_mail(recp, title, message):
     message = Message(subject=title, body=message, recipients=recp)
     mail.send(message)
 
+
+def create_event(startdatetime, enddatetime, master_id, room_id, form):
+    event = RoomEvent()
+    form.populate_obj(event)
+    event.datetime = DateTimeRange(lower=startdatetime, upper=enddatetime, bounds='[]')
+    event.start = startdatetime
+    event.end = enddatetime
+    event.created_at = arrow.now('Asia/Bangkok').datetime
+    event.creator = current_user
+    event.room_id = room_id
+    event.master_id = master_id
+    if request.form.getlist('groups'):
+        for group_id in request.form.getlist('groups'):
+            group = StaffGroupDetail.query.get(group_id)
+            for g in group.group_members:
+                event.participants.append(g.staff)
+    db.session.add(event)
+    db.session.commit()
+    return event
 
 @room.route('/api/iocodes')
 @login_required
@@ -304,6 +323,9 @@ def room_reserve(room_id):
 
             enddatetime = end.datetime
         else:
+            start = None
+            end = None
+            hour = None
             startdatetime = None
             enddatetime = None
         # if form.end.data:
@@ -330,6 +352,21 @@ def room_reserve(room_id):
                         new_event.participants.append(g.staff)
             db.session.add(new_event)
             db.session.commit()
+            if form.booking.data:
+                day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
+                current_date  = start.shift(days=day)
+                repeat_end = arrow.get(form.repeat_end.data, 'Asia/Bangkok').date()
+                while current_date.date() <= repeat_end:
+                    if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
+                        end_datetime = current_date
+                        for i in range(hour):
+                            end_datetime = end_datetime.shift(hours=1)
+                            if hour > 3 and end_datetime.hour == 12:
+                                end_datetime = end_datetime.shift(hours=1)
+                        create_event(current_date.datetime, end_datetime.datetime, new_event.id, room_id,
+                                     form)
+                        db.session.commit()
+                    current_date = current_date.shift(days=day)
             # TODO: alert by Line for the same-day booking
             if new_event.participants and new_event.notify_participants:
                 participant_emails = [f'{account.email}@mahidol.ac.th' for account in new_event.participants]
