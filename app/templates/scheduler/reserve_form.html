@@ -126,9 +126,21 @@
                             </div>
                         </div>
                     </div>
+                    <div class="field is-horizontal">
+                        <div class="field-label is-normal">
+                            <label class="label">{{ form.booking.label }}</label>
+                        </div>
+                        <div class="field-body">
+                            <div class="field">
+                                <div class="select">
+                                    {{ form.booking() }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 {#                    <div class="field is-horizontal">#}
 {#                        <div class="field-label is-normal">#}
-{#                            <label class="label">สิ้นสุดวันที่</label>#}
+{#                            <label class="label">จองซ้ำจนถึงวันที่</label>#}
 {#                        </div>#}
 {#                        <div class="field-body">#}
 {#                            <div class="field">#}
