@@ -238,7 +238,6 @@ def edit_detail(event_id):
 
         form.populate_obj(event)
         event.datetime = DateTimeRange(lower=event_start, upper=event_end, bounds='[]')
-        print(event.datetime)
         event.updated_at = arrow.now('Asia/Bangkok').datetime
         event.updated_by = current_user.id
         if request.form.getlist('groups'):
@@ -248,6 +247,61 @@ def edit_detail(event_id):
                     event.participants.append(g.staff)
         db.session.add(event)
         db.session.commit()
+        if event.master_id or event.secondary:
+            master_id = event.master_id or event.id
+            events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id))
+            for evt in events:
+                evt.title = event.title
+                evt.comment = event.comment
+                evt.hour = event.hour
+                evt.booking = event.booking
+                evt.repeat_end = arrow.get(event.repeat_end, 'Asia/Bangkok').date()
+                evt.occupancy = event.occupancy
+                evt.participants = event.participants
+                evt.notify_participants = event.notify_participants
+                evt.note = event.note
+                evt.category_id = event.category_id
+                evt.updated_at = arrow.now('Asia/Bangkok').datetime
+                evt.updated_by = current_user.id
+                startdatetime = arrow.get(evt.start, 'Asia/Bangkok').datetime
+                hour = int(event.hour)
+                start = arrow.get(evt.start, 'Asia/Bangkok')
+                end = start
+
+                for i in range(hour):
+                    end = end.shift(hours=1)
+                    if hour > 3 and end.hour == 12:
+                        end = end.shift(hours=1)
+
+                enddatetime = end.datetime
+                evt.datetime = DateTimeRange(lower=startdatetime, upper=enddatetime, bounds='[]')
+                evt.start = startdatetime
+                evt.end = enddatetime
+                repeat_end = arrow.get(form.repeat_end.data, 'Asia/Bangkok').date()
+
+                if form.booking.data:
+                    day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
+                    current_date = start.shift(days=day)
+                    while current_date.date() <= repeat_end:
+                        if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
+                            end_datetime = current_date
+                            for i in range(hour):
+                                end_datetime = end_datetime.shift(hours=1)
+                                if hour > 3 and end_datetime.hour == 12:
+                                    end_datetime = end_datetime.shift(hours=1)
+                            room_event = RoomEvent.query.filter_by(room_id=evt.room_id, start=current_date.datetime,
+                                                                   end=end_datetime.datetime).first()
+                            if not room_event:
+                                create_event(current_date.datetime, end_datetime.datetime, master_id, evt.room_id, form)
+                        current_date = current_date.shift(days=day)
+
+                if request.form.getlist('groups'):
+                    for group_id in request.form.getlist('groups'):
+                        group = StaffGroupDetail.query.get(group_id)
+                        for g in group.group_members:
+                            evt.participants.append(g.staff)
+                db.session.add(evt)
+            db.session.commit()
         if event.participants and event.notify_participants:
             participant_emails = [f'{account.email}@mahidol.ac.th' for account in event.participants]
             title = f'แจ้งแก้ไขการนัดหมาย{event.category}'
@@ -365,7 +419,7 @@ def room_reserve(room_id):
                                 end_datetime = end_datetime.shift(hours=1)
                         create_event(current_date.datetime, end_datetime.datetime, new_event.id, room_id,
                                      form)
-                        db.session.commit()
+                        # db.session.commit()
                     current_date = current_date.shift(days=day)
             # TODO: alert by Line for the same-day booking
             if new_event.participants and new_event.notify_participants:
