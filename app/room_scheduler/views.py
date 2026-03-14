@@ -417,9 +417,10 @@ def room_reserve(room_id):
                             end_datetime = end_datetime.shift(hours=1)
                             if hour > 3 and end_datetime.hour == 12:
                                 end_datetime = end_datetime.shift(hours=1)
-                        create_event(current_date.datetime, end_datetime.datetime, new_event.id, room_id,
-                                     form)
-                        # db.session.commit()
+                        room_event = RoomEvent.query.filter_by(room_id=room_id, start=current_date.datetime,
+                                                               end=end_datetime.datetime).first()
+                        if not room_event:
+                            create_event(current_date.datetime, end_datetime.datetime, new_event.id, room_id, form)
                     current_date = current_date.shift(days=day)
             # TODO: alert by Line for the same-day booking
             if new_event.participants and new_event.notify_participants:
