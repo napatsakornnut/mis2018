@@ -168,6 +168,14 @@ def cancel(event_id=None):
     event.cancelled_at = cancelled_datetime
     event.cancelled_by = current_user.id
     db.session.add(event)
+
+    if event.master_id or event.secondary:
+        master_id = event.master_id or event.id
+        events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id))
+        for evt in events:
+            evt.cancelled_at = cancelled_datetime
+            evt.cancelled_by = current_user.id
+            db.session.add(evt)
     db.session.commit()
     start = localtz.localize(event.datetime.lower)
     end = localtz.localize(event.datetime.upper)
