@@ -12,6 +12,7 @@
             hx-swap="innerHTML"
         >
             {{ form.hidden_tag() }}
+            <input type="hidden" name="mode" value="{{ mode }}">
             <section class="modal-card-body">
                 <article class="message is-info">
                     <div class="message-body">
@@ -32,6 +33,15 @@
                         <p class="help is-danger">{{ form.email.errors[0] }}</p>
                     {% endif %}
                 </div>
+
+                {% if mode == 'mahidol' %}
+                    <article class="message is-warning is-small">
+                        <div class="message-body">
+                            Mahidol staff registrations only accept email addresses ending with <strong>@mahidol.ac.th</strong>.<br>
+                            การลงทะเบียนสำหรับบุคลากรมหิดลจะรับเฉพาะอีเมลที่ลงท้ายด้วย <strong>@mahidol.ac.th</strong> เท่านั้น
+                        </div>
+                    </article>
+                {% endif %}
 
                 <article class="message is-warning is-small">
                     <div class="message-body">

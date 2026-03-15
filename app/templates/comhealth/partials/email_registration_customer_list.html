@@ -20,26 +20,15 @@
                             <td>{{ customer.email or '-' }}</td>
                             <td class="has-text-centered">
                                 <div class="buttons is-centered are-small">
-                                    {% if mode == 'mahidol' %}
-                                        <a class="button is-light is-danger" href="{{ url_for('comhealth.verify_email_registration_mahidol_staff_google', customer_id=customer.id) }}">
-                                            <span class="icon"><i class="fab fa-google"></i></span>
-                                            <span>Verify with Google</span>
-                                        </a>
-                                    {% else %}
-                                        <a class="button is-light is-link"
-                                           href="#"
-                                           hx-get="{{ url_for('comhealth.edit_email_registration_customer_modal', customer_id=customer.id) }}"
-                                           hx-target="#staff-email-modal-container"
-                                           hx-swap="innerHTML"
-                                           onclick="return false;">
-                                            <span class="icon"><i class="fas fa-pen"></i></span>
-                                            <span>Edit Email</span>
-                                        </a>
-                                        <a class="button is-light is-success" href="#">
-                                            <span class="icon"><i class="fas fa-circle-check"></i></span>
-                                            <span>Verify Email</span>
-                                        </a>
-                                    {% endif %}
+                                    <a class="button is-light is-link"
+                                       href="#"
+                                       hx-get="{{ url_for('comhealth.email_registration_qr_access_modal', customer_id=customer.id, mode=mode) }}"
+                                       hx-target="#staff-email-modal-container"
+                                       hx-swap="innerHTML"
+                                       onclick="return false;">
+                                        <span class="icon"><i class="fas fa-qrcode"></i></span>
+                                        <span>Create QR</span>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
