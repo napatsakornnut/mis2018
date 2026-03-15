@@ -114,9 +114,9 @@
 
         .home-stat-value {
             color: var(--theme-navy-deep);
-            font-size: 1.8rem;
+            font-size: 1.35rem;
             font-weight: 700;
-            line-height: 1;
+            line-height: 1.15;
         }
 
         .home-main-grid {
@@ -373,18 +373,16 @@
                                 <span class="home-summary-link-copy">
                                     <span class="icon is-medium"><i class="fa-solid fa-users"></i></span>
                                     <span>
-                                        <span class="home-stat-label">Staff System</span>
                                         <span class="home-stat-value">บุคลากร</span>
                                     </span>
                                 </span>
                                 <span class="icon"><i class="fa-solid fa-arrow-right"></i></span>
                             </a>
-                            <a class="home-stat home-summary-link" href="https://eoffice.mahidol.ac.th/">
+                            <a class="home-stat home-summary-link" href="{{ url_for('comhealth.landing') }}">
                                 <span class="home-summary-link-copy">
-                                    <span class="icon is-medium"><i class="fa-solid fa-building-columns"></i></span>
+                                    <span class="icon is-medium"><i class="fa-solid fa-heart-pulse"></i></span>
                                     <span>
-                                        <span class="home-stat-label">University System</span>
-                                        <span class="home-stat-value">e-office</span>
+                                        <span class="home-stat-value">ระบบงานบริการสุขภาพชุมชน</span>
                                     </span>
                                 </span>
                                 <span class="icon"><i class="fa-solid fa-arrow-right"></i></span>
@@ -418,6 +416,13 @@
                                     <span class="home-link-copy">
                                         <span class="icon"><i class="fas fa-map-marker-alt"></i></span>
                                         <span>ลงชื่อใช้งานด้วย GPS</span>
+                                    </span>
+                                    <span class="icon"><i class="fa-solid fa-arrow-right"></i></span>
+                                </a>
+                                <a class="home-link-item" href="https://eoffice.mahidol.ac.th/">
+                                    <span class="home-link-copy">
+                                        <span class="icon"><i class="fa-solid fa-building-columns"></i></span>
+                                        <span>e-office</span>
                                     </span>
                                     <span class="icon"><i class="fa-solid fa-arrow-right"></i></span>
                                 </a>

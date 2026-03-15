@@ -62,21 +62,6 @@ def _is_google_verification_enabled():
     return bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET'))
 
 
-def _google_verification_redirect_uri():
-    return os.getenv('GOOGLE_COMHEALTH_REDIRECT_URI') or urljoin(
-        request.host_url, '/comhealth/email-registration/mahidol-staff/google/callback'
-    )
-
-
-def _google_verification_oauth_session(state=None):
-    return OAuth2Session(
-        client_id=os.getenv('GOOGLE_CLIENT_ID'),
-        redirect_uri=_google_verification_redirect_uri(),
-        scope=GOOGLE_SCOPES,
-        state=state,
-    )
-
-
 def _google_online_results_redirect_uri():
     return os.getenv('GOOGLE_COMHEALTH_RESULTS_REDIRECT_URI') or urljoin(
         request.host_url, '/comhealth/online-results/mahidol/google/callback'
@@ -303,92 +288,6 @@ def email_registration_access_form():
         mode=mode,
         access_token=token
     )
-
-
-@comhealth.route('/email-registration/mahidol-staff/customers/<int:customer_id>/verify-google')
-def verify_email_registration_mahidol_staff_google(customer_id):
-    if not _is_google_verification_enabled():
-        flash('Google sign-in is not configured yet. / ยังไม่ได้ตั้งค่า Google sign-in', 'warning')
-        return redirect(url_for('comhealth.email_registration_mahidol_staff'))
-
-    customer = ComHealthCustomer.query.get_or_404(customer_id)
-    oauth = _google_verification_oauth_session()
-    authorization_base_url = 'https://accounts.google.com/o/oauth2/v2/auth'
-    state = secrets.token_urlsafe(16)
-    session['comhealth_google_oauth_state'] = state
-    session['comhealth_google_customer_id'] = customer.id
-    authorization_url, _ = oauth.authorization_url(
-        authorization_base_url,
-        state=state,
-        hd='mahidol.ac.th',
-        prompt='select_account',
-    )
-    return redirect(authorization_url)
-
-
-@comhealth.route('/email-registration/mahidol-staff/google/callback')
-def verify_email_registration_mahidol_staff_google_callback():
-    if not _is_google_verification_enabled():
-        flash('Google sign-in is not configured yet. / ยังไม่ได้ตั้งค่า Google sign-in', 'warning')
-        return redirect(url_for('comhealth.email_registration_mahidol_staff'))
-
-    expected_state = session.pop('comhealth_google_oauth_state', None)
-    customer_id = session.pop('comhealth_google_customer_id', None)
-    state = request.args.get('state')
-    if not state or state != expected_state or not customer_id:
-        flash(
-            'Invalid Google verification state. Please try again. / สถานะการยืนยัน Google ไม่ถูกต้อง กรุณาลองใหม่',
-            'danger'
-        )
-        return redirect(url_for('comhealth.email_registration_mahidol_staff'))
-
-    oauth = _google_verification_oauth_session(state=state)
-    try:
-        oauth.fetch_token(
-            token_url='https://oauth2.googleapis.com/token',
-            client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
-            authorization_response=request.url,
-        )
-        resp = oauth.get('https://www.googleapis.com/oauth2/v3/userinfo')
-        resp.raise_for_status()
-        profile = resp.json()
-    except Exception as exc:
-        current_app.logger.exception('Mahidol email verification failed during OAuth callback.')
-        if current_app.debug:
-            flash(
-                'Google verification failed: {} / การยืนยันด้วย Google ล้มเหลว'.format(exc),
-                'danger'
-            )
-        else:
-            flash(
-                'Google verification failed. Please try again. / การยืนยันด้วย Google ล้มเหลว กรุณาลองใหม่',
-                'danger'
-            )
-        return redirect(url_for('comhealth.email_registration_mahidol_staff'))
-
-    email = (profile.get('email') or '').strip().lower()
-    email_verified = profile.get('email_verified')
-    if not email or not email.endswith('@mahidol.ac.th') or not email_verified:
-        flash(
-            'Please use a verified Mahidol Google account (@mahidol.ac.th). / กรุณาใช้บัญชี Google มหิดลที่ยืนยันแล้ว (@mahidol.ac.th)',
-            'danger'
-        )
-        return redirect(url_for('comhealth.email_registration_mahidol_staff'))
-
-    customer = ComHealthCustomer.query.get(customer_id)
-    if not customer:
-        flash('Customer not found. / ไม่พบข้อมูลผู้รับบริการ', 'danger')
-        return redirect(url_for('comhealth.email_registration_mahidol_staff'))
-
-    customer.email = email
-    db.session.add(customer)
-    db.session.commit()
-    flash(
-        'Email verified with Google and saved successfully. / ยืนยันอีเมลด้วย Google และบันทึกเรียบร้อยแล้ว',
-        'success'
-    )
-    return redirect(url_for('comhealth.email_registration_mahidol_staff'))
-
 
 @comhealth.route('/online-results/mahidol/google')
 def online_results_mahidol_google_start():
