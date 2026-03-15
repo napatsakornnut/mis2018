@@ -1,32 +1,19 @@
-<section class="hero is-info is-bold">
+{% from "components/module_nav.html" import render_module_nav %}
+
+<section class="hero is-light">
     <div class="hero-head">
-        <nav class="navbar">
-            <div class="container">
-                <div class="navbar-brand">
-                    <a class="navbar-item">
-                        Faculty of Medical Technology, Mahidol University
-                    </a>
-                    <span class="navbar-burger burger" data-target="navbarMenuHeroA">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </span>
-                </div>
-                <div id="navbarMenuHeroA" class="navbar-menu">
-                    <div class="navbar-end">
-                        <a class="navbar-item" href="{{ url_for('kpi.main') }}">
-                            รายชื่อหน่วยงาน
-                        </a>
-                        <a class="navbar-item" href="{{ url_for('kpi.add_strategy') }}">
-                            เพิ่มยุทธศาสตร์
-                        </a>
-                        <a class="navbar-item" href="{{ url_for('kpi.get_kpis') }}">
-                            รายการตัวชี้วัด
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </nav>
+        {{ render_module_nav(
+            title='LISEdu',
+            subtitle='Lab Information System for Education',
+            brand_href='/',
+            start_links=[
+                {'href': url_for('kpi.main'), 'label': 'รายชื่อหน่วยงาน', 'icon': 'fas fa-sitemap', 'primary': True},
+                {'href': url_for('kpi.add_strategy'), 'label': 'เพิ่มยุทธศาสตร์', 'icon': 'fas fa-plus'},
+                {'href': url_for('kpi.get_kpis'), 'label': 'รายการตัวชี้วัด', 'icon': 'fas fa-list'}
+            ],
+            close_href=None,
+            menu_id='liseduNavbarMenu'
+        ) }}
     </div>
     <div class="hero-body">
         <div class="container">

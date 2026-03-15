@@ -1,36 +1,18 @@
-<nav class="navbar is-light">
-    <div class="container">
-        <div class="navbar-brand">
-            <a class="navbar-item" href="/">Main</a>
-                <span class="navbar-burger burger" data-target="navbarMenuHeroA">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </span>
-        </div>
-        <div id="navbarMenuHeroA" class="navbar-menu">
-            <div class="navbar-end">
-                <a class="navbar-item"
-                   href="/comhealth">
-                    <span>หน้าหลัก</span>
-                </a>
-                <a class="navbar-item"
-                   href="/comhealth/tests">
-                    <span>รายการทดสอบ</span>
-                </a>
-                <a class="navbar-item"
-                   href="/comhealth/organizations">
-                    <span>หน่วยงาน/ผู้รับบริการ</span>
-                </a>
-                <a class="navbar-item"
-                   href="/comhealth/services/finance">
-                    <span>การเงิน</span>
-                </a>
-                 <a class="navbar-item"
-                   href="/comhealth/services/finance">
-                    <span>Staff</span>
-                </a>
-            </div>
-        </div>
-    </div>
-</nav>
+{% from "components/module_nav.html" import render_module_nav %}
+
+{{ render_module_nav(
+    title='Community Health',
+    subtitle='ระบบงานบริการสุขภาพชุมชน',
+    brand_href='/comhealth',
+    start_links=[
+        {'href': '/comhealth', 'label': 'หน้าหลัก', 'icon': 'fas fa-house', 'primary': True},
+        {'href': '/comhealth/tests', 'label': 'รายการทดสอบ', 'icon': 'fas fa-vial'},
+        {'href': '/comhealth/organizations', 'label': 'หน่วยงาน/ผู้รับบริการ', 'icon': 'fas fa-building'},
+        {'href': '/comhealth/services/finance', 'label': 'การเงิน', 'icon': 'fas fa-coins'}
+    ],
+    end_links=[
+        {'href': '/comhealth/services/finance', 'label': 'Staff', 'icon': 'fas fa-users'}
+    ],
+    close_href=None,
+    menu_id='comhealthNavbarMenu'
+) }}
