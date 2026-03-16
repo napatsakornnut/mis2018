@@ -217,6 +217,7 @@ def approve_event(event_id):
 @room.route('/events/edit/<int:event_id>', methods=['POST', 'GET'])
 @login_required
 def edit_detail(event_id):
+    row_messages = []
     event = RoomEvent.query.get(event_id)
     complaints = ComplaintRecord.query.filter(ComplaintRecord.topic.has(ComplaintTopic.code.in_(['room', 'runied'])),
                                               or_(ComplaintRecord.status.has(ComplaintStatus.code != 'completed'),
@@ -256,9 +257,14 @@ def edit_detail(event_id):
         db.session.add(event)
         db.session.commit()
         if event.master_id or event.secondary:
+            no = 0
+            overlap_no = 0
             master_id = event.master_id or event.id
             events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id))
             for evt in events:
+                old_start = arrow.get(evt.start, 'Asia/Bangkok').datetime
+                old_booking = evt.booking
+                old_repeat_end = arrow.get(evt.repeat_end, 'Asia/Bangkok').date()
                 evt.title = event.title
                 evt.comment = event.comment
                 evt.hour = event.hour
@@ -287,23 +293,38 @@ def edit_detail(event_id):
                 evt.end = enddatetime
                 repeat_end = arrow.get(form.repeat_end.data, 'Asia/Bangkok').date()
 
-                if form.booking.data:
+                if (form.booking.data != old_booking) or (repeat_end != old_repeat_end) or (event_start != old_start):
                     day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
                     current_date = start.shift(days=day)
                     while current_date.date() <= repeat_end:
                         if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
                             end_datetime = current_date
+
                             for i in range(hour):
                                 end_datetime = end_datetime.shift(hours=1)
                                 if hour > 3 and end_datetime.hour == 12:
                                     end_datetime = end_datetime.shift(hours=1)
-                            # room_event = RoomEvent.query.filter_by(room_id=evt.room_id, start=current_date.datetime,
-                            #                                        end=end_datetime.datetime).first()
+
                             current_startdatetime = current_date.datetime
                             current_enddatetime = end_datetime.datetime
+                            start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                            end_str = end_datetime.datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
                             event_overlaps = get_overlaps(evt.room_id, current_startdatetime, current_enddatetime)
                             if not event_overlaps:
                                 create_event(current_startdatetime, current_enddatetime, master_id, evt.room_id, form)
+                                no += 1
+                                message = f"รายการจองซ้ำลำดับที่ {no} : {evt.title} ห้อง {evt.room.number} {evt.room.location} เวลา {start_str} - {end_str}"
+                                row_messages.append({"type": "info", "message": message})
+                            else:
+                                event_overlaps = [evt for evt in event_overlaps if evt.id != master_id]
+                                if overlaps:
+                                    overlap_no += 1
+                                    overlap_time = ''.join(f"{evt_overlap.datetime.lower.astimezone(localtz).strftime('%H:%M')} - "
+                                                           f"{evt_overlap.datetime.upper.astimezone(localtz).strftime('%H:%M')} ({evt.title})"
+                                                           for evt_overlap in event_overlaps
+                                                           )
+                                    message = f"รายการที่ไม่สามารถจองได้ลำดับที่ {overlap_no} : {evt.title} ห้อง {evt.room.number} {evt.room.location} เวลา {start_str} - {end_str} เนื่องจากมีการจองในเวลา {overlap_time}"
+                                    row_messages.append({"type": "danger", "message": message})
                         current_date = current_date.shift(days=day)
 
                 if request.form.getlist('groups'):
@@ -335,6 +356,9 @@ def edit_detail(event_id):
         else:
             print(msg, event.room.coordinator)
         flash(u'อัพเดตรายการเรียบร้อย', 'success')
+        if row_messages:
+            for msg in row_messages:
+                flash(msg["message"], msg["type"])
         return redirect(url_for('room.index'))
     else:
         for field, error in form.errors.items():
@@ -368,7 +392,7 @@ def room_list():
 @login_required
 def room_reserve(room_id):
     form = RoomEventForm()
-    row_messages = None
+    row_messages = []
     room = RoomResource.query.get(room_id)
     complaints = ComplaintRecord.query.filter(ComplaintRecord.topic.has(ComplaintTopic.code.in_(['room', 'runied'])),
                                               or_(ComplaintRecord.status.has(ComplaintStatus.code!='completed'),
@@ -421,7 +445,6 @@ def room_reserve(room_id):
             if form.booking.data:
                 no = 0
                 overlap_no = 0
-                row_messages = []
                 day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
                 current_date  = start.shift(days=day)
                 repeat_end = arrow.get(form.repeat_end.data, 'Asia/Bangkok').date()
