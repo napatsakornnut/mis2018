@@ -238,7 +238,6 @@ def edit_detail(event_id):
         hour = int(form.hour.data)
         start = arrow.get(form.start.data, 'Asia/Bangkok')
         end = start
-        # event_end = arrow.get(form.start.data, 'Asia/Bangkok').shift(hours=int(form.hour.data)).datetime
         for i in range(hour):
             end = end.shift(hours=1)
             if hour > 3 and end.hour == 12:
@@ -390,6 +389,8 @@ def room_list():
 @login_required
 def room_reserve(room_id):
     form = RoomEventForm()
+    no = 0
+    overlap_no = 0
     row_messages = []
     room = RoomResource.query.get(room_id)
     complaints = ComplaintRecord.query.filter(ComplaintRecord.topic.has(ComplaintTopic.code.in_(['room', 'runied'])),
@@ -441,8 +442,6 @@ def room_reserve(room_id):
             db.session.add(new_event)
             db.session.commit()
             if form.booking.data:
-                no = 0
-                overlap_no = 0
                 day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
                 current_date  = start.shift(days=day)
                 repeat_end = arrow.get(form.repeat_end.data, 'Asia/Bangkok').date()
@@ -475,22 +474,40 @@ def room_reserve(room_id):
                             row_messages.append({"type": "danger", "message": message})
                     current_date = current_date.shift(days=day)
             # TODO: alert by Line for the same-day booking
+
+            if new_event.secondary:
+                event_times = ', '.join(
+                    f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
+                    f"{arrow.get(other_event.end, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')}"
+                    for other_event in new_event.secondary
+                    )
+            else:
+                event_times = None
+
             if new_event.participants and new_event.notify_participants:
                 participant_emails = [f'{account.email}@mahidol.ac.th' for account in new_event.participants]
                 title = f'แจ้งนัดหมาย{new_event.category}'
                 message = f'ท่านได้รับเชิญให้เข้าร่วม {new_event.title}'
-                message += f' เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
+                if event_times:
+                    message += f' เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}, {event_times}'
+                else:
+                    message += f' เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
                 message += f' ณ ห้อง {room.number} {room.location}'
                 message += f'\n\nขอความอนุเคราะห์เข้าร่วมในวันและเวลาดังกล่าว'
                 if not current_app.debug:
                     send_mail(participant_emails, title, message)
                 else:
                     print(message)
-
-            msg = (f'{new_event.creator.fullname} ได้จองห้อง {room} สำหรับ {new_event.title} '
-                   f'เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
-                   f'มีความต้องการเพิ่มเติมคือ {new_event.note}'
-                   )
+            if event_times:
+                msg = (f'{new_event.creator.fullname} ได้จองห้อง {room} สำหรับ {new_event.title} '
+                       f'เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}, {event_times}.'
+                       f'มีความต้องการเพิ่มเติมคือ {new_event.note}'
+                       )
+            else:
+                msg = (f'{new_event.creator.fullname} ได้จองห้อง {room} สำหรับ {new_event.title} '
+                       f'เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
+                       f'มีความต้องการเพิ่มเติมคือ {new_event.note}'
+                       )
             if not current_app.debug:
                 if new_event.note:
                     for coord in room.coordinators:
