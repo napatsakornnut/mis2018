@@ -297,9 +297,10 @@ def edit_detail(event_id):
                                 end_datetime = end_datetime.shift(hours=1)
                                 if hour > 3 and end_datetime.hour == 12:
                                     end_datetime = end_datetime.shift(hours=1)
-                            room_event = RoomEvent.query.filter_by(room_id=evt.room_id, start=current_date.datetime,
-                                                                   end=end_datetime.datetime).first()
-                            if not room_event:
+                            # room_event = RoomEvent.query.filter_by(room_id=evt.room_id, start=current_date.datetime,
+                            #                                        end=end_datetime.datetime).first()
+                            event_overlaps = get_overlaps(evt.room_id, current_date.datetime, end_datetime.datetime)
+                            if not event_overlaps:
                                 create_event(current_date.datetime, end_datetime.datetime, master_id, evt.room_id, form)
                         current_date = current_date.shift(days=day)
 
@@ -425,9 +426,10 @@ def room_reserve(room_id):
                             end_datetime = end_datetime.shift(hours=1)
                             if hour > 3 and end_datetime.hour == 12:
                                 end_datetime = end_datetime.shift(hours=1)
-                        room_event = RoomEvent.query.filter_by(room_id=room_id, start=current_date.datetime,
-                                                               end=end_datetime.datetime).first()
-                        if not room_event:
+                        # room_event = RoomEvent.query.filter_by(room_id=room_id, start=current_date.datetime,
+                        #                                        end=end_datetime.datetime).first()
+                        event_overlaps = get_overlaps(room_id, current_date.datetime, end_datetime.datetime)
+                        if not event_overlaps:
                             create_event(current_date.datetime, end_datetime.datetime, new_event.id, room_id, form)
                     current_date = current_date.shift(days=day)
             # TODO: alert by Line for the same-day booking
