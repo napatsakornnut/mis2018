@@ -369,7 +369,7 @@
                         </p>
 
                         <div class="home-summary-grid">
-                            <a class="home-stat home-summary-link" href="http://127.0.0.1:5000/staff/">
+                            <a class="home-stat home-summary-link" href="{{ url_for('staff.index') }}">
                                 <span class="home-summary-link-copy">
                                     <span class="icon is-medium"><i class="fa-solid fa-users"></i></span>
                                     <span>
@@ -398,7 +398,7 @@
                                 </div>
                             </div>
                             <div class="home-link-list">
-                                <a class="home-link-item" href="http://127.0.0.1:5000/staff/leave/info">
+                                <a class="home-link-item" href="{{ url_for('staff.show_leave_info') }}">
                                     <span class="home-link-copy">
                                         <span class="icon"><i class="fa-solid fa-calendar-check"></i></span>
                                         <span>ลาปฏิบัติงาน</span>
