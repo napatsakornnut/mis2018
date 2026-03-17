@@ -3560,6 +3560,8 @@ def cmslis_email(email):
 
     employee = response_employee.json()
 
+    employee_dob = employee.get("birthDate")
+
     cmscode = employee.get("cmsCode")
     if not cmscode:
         return '<tr><td colspan="2" class="has-text-centered">ไม่พบข้อมูล</td></tr>'
@@ -3584,11 +3586,22 @@ def cmslis_email(email):
 
         serviceno = row.get("serviceNo")
 
+        #อายุตามวันที่ตรวจ
+        if not employee_dob:
+            age = "No birth date"
+        else:
+            birth_date = datetime.strptime(employee_dob, "%Y-%m-%dT%H:%M:%S").date()
+            service_date = datetime.strptime(servicedate, "%Y-%m-%dT%H:%M:%S").date()
+            age = service_date.year - birth_date.year - (
+                    (service_date.month, service_date.day) < (birth_date.month, birth_date.day)
+            )
+
         result_url = url_for(
             'comhealth.customer_result',
             serviceNo=serviceno,
             email=email,
-            servicedate=servicedate
+            servicedate=servicedate,
+            age=age
         )
 
         html += f"""
@@ -3652,7 +3665,8 @@ mapping_color_inp = {
     }
 
 @comhealth.route('/result/<int:serviceNo>/<string:email>/<string:servicedate>')
-def customer_result(serviceNo, email, servicedate):
+@comhealth.route('/result/<int:serviceNo>/<string:email>/<string:servicedate>/<string:age>')
+def customer_result(serviceNo, email, servicedate, age=None):
     access_response = _require_online_results_access()
     if access_response:
         return access_response
@@ -3665,7 +3679,6 @@ def customer_result(serviceNo, email, servicedate):
                 'danger'
             )
             return redirect(url_for('comhealth.customers_result_list'))
-
     api_employee_url = f"https://webmt.mahidol.ac.th/api/Employees/email/{email}"
     response_employee = requests.get(api_employee_url)
     employee = response_employee.json()
@@ -3679,7 +3692,8 @@ def customer_result(serviceNo, email, servicedate):
         'comhealth/result.html',
         employee=employee,
         servicedate_thai=servicedate_thai,
-        service_no=serviceNo
+        service_no=serviceNo,
+        age=age
     )
 
 @comhealth.route('/api/physical/<int:serviceNo>')

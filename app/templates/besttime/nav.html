@@ -3,9 +3,9 @@
 {{ render_module_nav(
     title='Besttime',
     subtitle='ระบบนัดหมายการประชุมกรรมการจัดซื้อจัดจ้าง',
-    brand_href=url_for('besttime.index'),
+    brand_href=url_for('besttime.index', tab='voter'),
     start_links=[
-        {'href': url_for('besttime.index'), 'label': 'หน้าหลัก', 'icon': 'fas fa-house', 'primary': True}
+        {'href': url_for('besttime.index', tab='voter'), 'label': 'หน้าหลัก', 'icon': 'fas fa-house', 'primary': True}
     ],
     user_display=current_user.email,
     account_href=url_for('auth.account'),
