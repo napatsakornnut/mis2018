@@ -1329,7 +1329,6 @@ def filter_upcoming_meeting_events(events):
 
 @app.template_filter('upcoming_events')
 def filter_upcoming_events(events):
-    bangkok = timezone('Asia/Bangkok')
     return [event for event in events
             if event.datetime.lower.astimezone(tz)
             >= arrow.now('Asia/Bangkok').datetime

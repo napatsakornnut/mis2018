@@ -128,7 +128,11 @@ def get_events():
 @room.route('/')
 @login_required
 def index():
-    return render_template('scheduler/room_main.html')
+    cutoff = arrow.now('Asia/Bangkok').shift(days=-30).datetime
+    recent_reservations = current_user.room_reservations \
+        .filter(RoomEvent.created_at >= cutoff) \
+        .order_by(RoomEvent.created_at.desc())
+    return render_template('scheduler/room_main.html', recent_reservations=recent_reservations)
 
 
 @room.route('/events/<list_type>')

@@ -1,25 +1,30 @@
 # -*- coding: utf-8 -*-
 import datetime
+import hashlib
 import io
 import json
 import os
 import re
+import secrets
 from collections import OrderedDict, defaultdict
 from io import BytesIO
+from urllib.parse import urljoin
 
 import pandas as pd
 import requests
 from bahttext import bahttext
 from flask import (render_template, flash, redirect,
                    url_for, session, request, send_file,
-                   send_from_directory, make_response)
+                   send_from_directory, make_response, current_app)
 from flask_admin import BaseView, expose
 from flask_cors import cross_origin
 from flask_login import login_required, current_user
 from flask_mail import Message
 from flask_wtf.csrf import generate_csrf
+from itsdangerous.url_safe import URLSafeTimedSerializer as TimedJSONWebSignatureSerializer
 from markupsafe import escape
 from pandas import read_excel, isna
+from requests_oauthlib import OAuth2Session
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -46,6 +51,45 @@ bangkok = pytz.timezone('Asia/Bangkok')
 
 ALLOWED_EXTENSIONS = ['xlsx', 'xls']
 
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid',
+]
+
+
+def _is_google_verification_enabled():
+    return bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET'))
+
+
+def _google_online_results_redirect_uri():
+    return os.getenv('GOOGLE_COMHEALTH_RESULTS_REDIRECT_URI') or urljoin(
+        request.host_url, '/comhealth/online-results/mahidol/google/callback'
+    )
+
+
+def _google_online_results_oauth_session(state=None):
+    return OAuth2Session(
+        client_id=os.getenv('GOOGLE_CLIENT_ID'),
+        redirect_uri=_google_online_results_redirect_uri(),
+        scope=GOOGLE_SCOPES,
+        state=state,
+    )
+
+
+def _has_online_results_access():
+    return current_user.is_authenticated or bool(session.get('comhealth_online_results_email'))
+
+
+def _require_online_results_access():
+    if _has_online_results_access():
+        return None
+    flash(
+        'Please verify your email access before viewing online results. / กรุณายืนยันสิทธิ์อีเมลก่อนดูผลตรวจออนไลน์',
+        'warning'
+    )
+    return redirect(url_for('comhealth.landing'))
+
 
 @comhealth.route('/api/v1/lineids/<lineid>')
 @cross_origin()
@@ -61,7 +105,6 @@ def get_line_id(lineid):
 
 
 @comhealth.route('/')
-@login_required
 def landing():
     return render_template('comhealth/landing.html')
 
@@ -74,6 +117,384 @@ def finance_landing():
         session['receipt_venue'] = venue
         return redirect(url_for('comhealth.finance_index'))
     return render_template('comhealth/finance_landing.html')
+
+
+@comhealth.route('/email-registration')
+@login_required
+def email_registration_landing():
+    return render_template('comhealth/email_registration_landing.html')
+
+
+@comhealth.route('/email-registration/mahidol-staff')
+@login_required
+def email_registration_mahidol_staff():
+    return render_template('comhealth/email_registration_mahidol_staff.html')
+
+
+@comhealth.route('/email-registration/general-public')
+@login_required
+def email_registration_general_public():
+    return render_template('comhealth/email_registration_general_public.html')
+
+
+@comhealth.route('/email-registration/mahidol-staff/search')
+@login_required
+def search_email_registration_mahidol_staff():
+    query_text = request.args.get('query', '').strip()
+    customers = []
+    if query_text:
+        query = ComHealthCustomer.query
+        name_parts = [part for part in query_text.split() if part]
+
+        if len(name_parts) >= 2:
+            firstname_part = name_parts[0]
+            lastname_part = ' '.join(name_parts[1:])
+            query = query.filter(or_(
+                and_(
+                    ComHealthCustomer.firstname.contains(firstname_part),
+                    ComHealthCustomer.lastname.contains(lastname_part)
+                ),
+                and_(
+                    ComHealthCustomer.firstname.contains(lastname_part),
+                    ComHealthCustomer.lastname.contains(firstname_part)
+                )
+            ))
+        else:
+            query = query.filter(or_(
+                ComHealthCustomer.firstname.contains(query_text),
+                ComHealthCustomer.lastname.contains(query_text)
+            ))
+
+        customers = (
+            query
+            .order_by(ComHealthCustomer.firstname.asc(), ComHealthCustomer.lastname.asc())
+            .limit(50)
+            .all()
+        )
+    return render_template(
+        'comhealth/partials/email_registration_customer_list.html',
+        customers=customers,
+        query_text=query_text,
+        mode='mahidol'
+    )
+
+
+@comhealth.route('/email-registration/general-public/search')
+@login_required
+def search_email_registration_general_public():
+    query_text = request.args.get('query', '').strip()
+    customers = []
+    if query_text:
+        query = ComHealthCustomer.query
+        name_parts = [part for part in query_text.split() if part]
+
+        if len(name_parts) >= 2:
+            firstname_part = name_parts[0]
+            lastname_part = ' '.join(name_parts[1:])
+            query = query.filter(or_(
+                and_(
+                    ComHealthCustomer.firstname.contains(firstname_part),
+                    ComHealthCustomer.lastname.contains(lastname_part)
+                ),
+                and_(
+                    ComHealthCustomer.firstname.contains(lastname_part),
+                    ComHealthCustomer.lastname.contains(firstname_part)
+                )
+            ))
+        else:
+            query = query.filter(or_(
+                ComHealthCustomer.firstname.contains(query_text),
+                ComHealthCustomer.lastname.contains(query_text)
+            ))
+
+        customers = (
+            query
+            .order_by(ComHealthCustomer.firstname.asc(), ComHealthCustomer.lastname.asc())
+            .limit(50)
+            .all()
+        )
+    return render_template(
+        'comhealth/partials/email_registration_customer_list.html',
+        customers=customers,
+        query_text=query_text,
+        mode='public'
+    )
+
+
+@comhealth.route('/email-registration/customers/<int:customer_id>/edit-email-modal')
+@login_required
+def edit_email_registration_customer_modal(customer_id):
+    customer = ComHealthCustomer.query.get_or_404(customer_id)
+    form = SendMailToCustomerForm()
+    form.email.data = customer.email
+    mode = request.args.get('mode', 'public')
+    return render_template(
+        'comhealth/modals/edit_email_registration_customer_modal.html',
+        form=form,
+        customer=customer,
+        mode=mode
+    )
+
+
+@comhealth.route('/email-registration/customers/<int:customer_id>/qr-access-modal')
+@login_required
+def email_registration_qr_access_modal(customer_id):
+    customer = ComHealthCustomer.query.get_or_404(customer_id)
+    mode = request.args.get('mode', 'public')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+    token = serializer.dumps({
+        'customer_id': customer.id,
+        'mode': mode,
+    })
+    access_url = url_for(
+        'comhealth.email_registration_access_form',
+        token=token,
+        _external=True
+    )
+    return render_template(
+        'comhealth/modals/email_registration_qr_modal.html',
+        customer=customer,
+        mode=mode,
+        access_url=access_url
+    )
+
+
+@comhealth.route('/email-registration/access')
+def email_registration_access_form():
+    token = request.args.get('token')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+    try:
+        token_data = serializer.loads(token, max_age=300)
+        customer_id = token_data.get('customer_id')
+        mode = token_data.get('mode', 'public')
+        customer = ComHealthCustomer.query.get_or_404(customer_id)
+    except Exception:
+        return render_template(
+            'comhealth/email_registration_verification_result.html',
+            status='danger',
+            title='QR link expired / ลิงก์ QR หมดอายุ',
+            message=(
+                'This QR link is invalid or has expired. Please ask staff to generate a new QR code.\n'
+                'ลิงก์ QR นี้ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาให้เจ้าหน้าที่สร้าง QR code ใหม่'
+            )
+        ), 400
+
+    form = SendMailToCustomerForm()
+    form.email.data = customer.email
+    return render_template(
+        'comhealth/email_registration_edit_form.html',
+        form=form,
+        customer=customer,
+        mode=mode,
+        access_token=token
+    )
+
+@comhealth.route('/online-results/mahidol/google')
+def online_results_mahidol_google_start():
+    if not _is_google_verification_enabled():
+        flash('Google sign-in is not configured yet. / ยังไม่ได้ตั้งค่า Google sign-in', 'warning')
+        return redirect(url_for('comhealth.landing'))
+
+    oauth = _google_online_results_oauth_session()
+    authorization_base_url = 'https://accounts.google.com/o/oauth2/v2/auth'
+    state = secrets.token_urlsafe(16)
+    session['comhealth_online_results_google_oauth_state'] = state
+    authorization_url, _ = oauth.authorization_url(
+        authorization_base_url,
+        state=state,
+        hd='mahidol.ac.th',
+        prompt='select_account',
+    )
+    return redirect(authorization_url)
+
+
+@comhealth.route('/online-results/mahidol/google/callback')
+def online_results_mahidol_google_callback():
+    if not _is_google_verification_enabled():
+        flash('Google sign-in is not configured yet. / ยังไม่ได้ตั้งค่า Google sign-in', 'warning')
+        return redirect(url_for('comhealth.landing'))
+
+    expected_state = session.pop('comhealth_online_results_google_oauth_state', None)
+    state = request.args.get('state')
+    if not state or state != expected_state:
+        flash(
+            'Invalid Google verification state. Please try again. / สถานะการยืนยัน Google ไม่ถูกต้อง กรุณาลองใหม่',
+            'danger'
+        )
+        return redirect(url_for('comhealth.landing'))
+
+    oauth = _google_online_results_oauth_session(state=state)
+    try:
+        oauth.fetch_token(
+            token_url='https://oauth2.googleapis.com/token',
+            client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
+            authorization_response=request.url,
+        )
+        resp = oauth.get('https://www.googleapis.com/oauth2/v3/userinfo')
+        resp.raise_for_status()
+        profile = resp.json()
+    except Exception as exc:
+        current_app.logger.exception('Online results Google verification failed during OAuth callback.')
+        if current_app.debug:
+            flash(
+                'Google verification failed: {} / การยืนยันด้วย Google ล้มเหลว'.format(exc),
+                'danger'
+            )
+        else:
+            flash(
+                'Google verification failed. Please try again. / การยืนยันด้วย Google ล้มเหลว กรุณาลองใหม่',
+                'danger'
+            )
+        return redirect(url_for('comhealth.landing'))
+
+    email = (profile.get('email') or '').strip().lower()
+    display_name = (profile.get('name') or email).strip()
+    email_verified = profile.get('email_verified')
+    if not email or not email.endswith('@mahidol.ac.th') or not email_verified:
+        flash(
+            'Please use a verified Mahidol Google account (@mahidol.ac.th). / กรุณาใช้บัญชี Google มหิดลที่ยืนยันแล้ว (@mahidol.ac.th)',
+            'danger'
+        )
+        return redirect(url_for('comhealth.landing'))
+
+    registered_customer = ComHealthCustomer.query.filter_by(email=email).first()
+    if not registered_customer:
+        flash(
+            'This email is not registered for any customer record. Please register your email first. / '
+            'อีเมลนี้ยังไม่ได้ลงทะเบียนในข้อมูลผู้รับบริการ กรุณาลงทะเบียนอีเมลก่อน',
+            'warning'
+        )
+        return redirect(url_for('comhealth.email_registration_landing'))
+
+    session['comhealth_online_results_email'] = email
+    session['comhealth_online_results_name'] = display_name
+    return redirect(url_for('comhealth.customers_result_list'))
+
+
+@comhealth.route('/email-registration/customers/<int:customer_id>/send-verification', methods=['POST'])
+def send_email_registration_verification(customer_id):
+    customer = ComHealthCustomer.query.get_or_404(customer_id)
+    form = SendMailToCustomerForm()
+    mode = request.form.get('mode', 'public')
+    access_token = request.form.get('access_token')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+
+    try:
+        token_data = serializer.loads(access_token, max_age=300)
+        if token_data.get('customer_id') != customer.id or token_data.get('mode', 'public') != mode:
+            raise ValueError('Invalid token payload')
+    except Exception:
+        return render_template(
+            'comhealth/email_registration_verification_result.html',
+            status='danger',
+            title='QR link expired / ลิงก์ QR หมดอายุ',
+            message=(
+                'This QR link is invalid or has expired. Please ask staff to generate a new QR code.\n'
+                'ลิงก์ QR นี้ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาให้เจ้าหน้าที่สร้าง QR code ใหม่'
+            )
+        ), 400
+
+    if not form.validate_on_submit():
+        return render_template(
+            'comhealth/email_registration_edit_form.html',
+            form=form,
+            customer=customer,
+            mode=mode,
+            access_token=access_token
+        ), 422
+
+    email = form.email.data.strip().lower()
+    if mode == 'mahidol' and not email.endswith('@mahidol.ac.th'):
+        form.email.errors.append('Please use a Mahidol email address (@mahidol.ac.th) / กรุณาใช้อีเมลมหิดล (@mahidol.ac.th)')
+        return render_template(
+            'comhealth/email_registration_edit_form.html',
+            form=form,
+            customer=customer,
+            mode=mode,
+            access_token=access_token
+        ), 422
+
+    email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()
+    token = serializer.dumps({
+        'customer_id': customer.id,
+        'email': email,
+        'email_hash': email_hash,
+    })
+    verify_url = url_for(
+        'comhealth.verify_email_registration_email',
+        token=token,
+        _external=True
+    )
+
+    title = 'Email Verification / ยืนยันอีเมล'
+    message = (
+        'Dear {},\n'
+        'A request was made to change your email in the Community Health system to: {}\n'
+        'Please verify this email by clicking the link below within 24 hours:\n'
+        '{}\n\n'
+        'If you did not request this change, please ignore this message.\n'
+        'Your email will not be changed until verification is completed.\n\n'
+        'เรียน {}\n'
+        'ระบบได้รับคำขอเปลี่ยนอีเมลของท่านในระบบงานบริการสุขภาพชุมชนเป็น: {}\n'
+        'กรุณายืนยันอีเมลโดยคลิกลิงก์ด้านล่างภายใน 24 ชั่วโมง:\n'
+        '{}\n\n'
+        'หากท่านไม่ได้เป็นผู้ร้องขอ กรุณาละเว้นอีเมลฉบับนี้\n'
+        'อีเมลของท่านจะยังไม่ถูกเปลี่ยนจนกว่าจะยืนยันสำเร็จ\n\n'
+        'This email was sent by an automated system. Please do not reply.\n'
+        'อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ'
+    ).format(
+        customer.fullname, email, verify_url,
+        customer.fullname, email, verify_url
+    )
+    send_mail([email], title, message)
+
+    return render_template('comhealth/email_registration_verification_result.html',
+                           status='success',
+                           title='Verification email sent / ส่งอีเมลยืนยันแล้ว',
+                           message=(
+                               'A verification link has been sent to {}. Please click the link within 24 hours to complete the email update.\n'
+                               'ระบบได้ส่งลิงก์ยืนยันไปที่ {} แล้ว กรุณาคลิกลิงก์ภายใน 24 ชั่วโมงเพื่ออัปเดตอีเมลให้เสร็จสมบูรณ์'
+                           ).format(email, email))
+
+
+@comhealth.route('/email-registration/verify')
+def verify_email_registration_email():
+    token = request.args.get('token')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+    status = 'danger'
+    title = 'Verification failed / การยืนยันไม่สำเร็จ'
+    message = (
+        'The verification link is invalid or has expired. '
+        'Please request a new verification email.\n'
+        'ลิงก์ยืนยันไม่ถูกต้องหรือหมดอายุแล้ว กรุณาส่งคำขอยืนยันอีเมลใหม่'
+    )
+    if token:
+        try:
+            token_data = serializer.loads(token, max_age=86400)
+            email = token_data.get('email', '').strip().lower()
+            email_hash = token_data.get('email_hash')
+            customer_id = token_data.get('customer_id')
+            expected_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()
+            customer = ComHealthCustomer.query.get(customer_id)
+            if customer and email_hash == expected_hash:
+                customer.email = email
+                db.session.add(customer)
+                db.session.commit()
+                status = 'success'
+                title = 'Email verified / ยืนยันอีเมลสำเร็จ'
+                message = (
+                    'Your email has been verified and saved successfully.\n'
+                    'ระบบได้ยืนยันและบันทึกอีเมลของท่านเรียบร้อยแล้ว'
+                )
+        except Exception:
+            pass
+
+    return render_template(
+        'comhealth/email_registration_verification_result.html',
+        status=status,
+        title=title,
+        message=message
+    )
 
 
 @comhealth.route('/services/finance')
@@ -3103,20 +3524,33 @@ def receipt_list():
 
 
 @comhealth.route('/list/servicedate')
-@login_required
 def customers_result_list():
-    customer = ComHealthCustomer.query.filter_by(firstname=current_user.personal_info.th_firstname, lastname=current_user.personal_info.th_lastname).first()
-    #email = customer.email  ( ใช้สำหรับคนภายนอก )
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
 
-    email = current_user.email #( ภายในคณะ )
-    email = f"{email}@mahidol.ac.th" #( ภายในคณะ )
+    if current_user.is_authenticated:
+        email = current_user.email
+        if email and '@' not in email:
+            email = f'{email}@mahidol.ac.th'
+        display_name = current_user.fullname
+    else:
+        email = session.get('comhealth_online_results_email')
+        display_name = session.get('comhealth_online_results_name', email)
 
-    return render_template('comhealth/customers_result_list.html',email=email)
+    return render_template('comhealth/customers_result_list.html', email=email, display_name=display_name)
 
 
 @comhealth.route('/api/cmslis/<email>')
-@login_required
 def cmslis_email(email):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+
+    if not current_user.is_authenticated:
+        session_email = session.get('comhealth_online_results_email', '').strip().lower()
+        if email.strip().lower() != session_email:
+            return '<tr><td colspan="2" class="has-text-centered">Unauthorized</td></tr>', 403
 
     api_employee_url = f"https://webmt.mahidol.ac.th/api/Employees/email/{email}"
     response_employee = requests.get(api_employee_url)
@@ -3230,9 +3664,21 @@ mapping_color_inp = {
         "AbH": ("has-text-danger")
     }
 
+@comhealth.route('/result/<int:serviceNo>/<string:email>/<string:servicedate>')
 @comhealth.route('/result/<int:serviceNo>/<string:email>/<string:servicedate>/<string:age>')
-@login_required
-def customer_result(serviceNo, email, servicedate, age):
+def customer_result(serviceNo, email, servicedate, age=None):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+
+    if not current_user.is_authenticated:
+        session_email = session.get('comhealth_online_results_email', '').strip().lower()
+        if email.strip().lower() != session_email:
+            flash(
+                'Unauthorized online result access. / ไม่มีสิทธิ์เข้าถึงผลตรวจนี้',
+                'danger'
+            )
+            return redirect(url_for('comhealth.customers_result_list'))
     api_employee_url = f"https://webmt.mahidol.ac.th/api/Employees/email/{email}"
     response_employee = requests.get(api_employee_url)
     employee = response_employee.json()
@@ -3251,8 +3697,10 @@ def customer_result(serviceNo, email, servicedate, age):
     )
 
 @comhealth.route('/api/physical/<int:serviceNo>')
-@login_required
 def employee_physical(serviceNo):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
     'phyical น้ำหนัก ส่วนสูง'
     api_physical_url = f"http://webmt.mahidol.ac.th/api/PhysicalExams/{serviceNo}"
     try:
@@ -3334,8 +3782,10 @@ def employee_physical(serviceNo):
 
 
 @comhealth.route('/api/lab/<int:serviceNo>/<int:age>/<gender>')
-@login_required
 def employee_lab(serviceNo, age, gender):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
 
     api_lab_url = f"https://webmt.mahidol.ac.th/api/Labs/service/testsummary/{serviceNo}"
     try:
@@ -3721,6 +4171,9 @@ def text_br(*advises):
 
 @comhealth.route('/api/testspecial/<int:serviceNo>/<int:gender>/<int:age>')
 def testspecial(serviceNo, gender, age):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
     api_lab_url = f"https://webmt.mahidol.ac.th/api/Labs/service/testsummary/{serviceNo}"
     try:
         response = requests.get(api_lab_url)
@@ -3762,8 +4215,10 @@ def testspecial(serviceNo, gender, age):
 
 
 @comhealth.route('/api/xray/<int:serviceNo>')
-@login_required
 def xray_result(serviceNo):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
     api_url = f"https://webmt.mahidol.ac.th/api/XRays/{serviceNo}"
     reponse_xray = requests.get(api_url)
     xray =  reponse_xray.json()

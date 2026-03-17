@@ -2,7 +2,7 @@
 {% include "nav.html" %}
 {% block head %}
     {{ super() }}
-    <link rel="stylesheet" type="text/css" href="https://fastly.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
 {% endblock head %}
 {% block page_content %}
     <section class="section" id="app">
@@ -83,6 +83,12 @@
                          </span>
                         <span>report</span>
                     </a>
+                    <a id="load-table" class="button is-danger" onclick="download_finance_pdf()">
+                         <span class="icon">
+                             <i class="fa-solid fa-file-pdf"></i>
+                         </span>
+                        <span>finance pdf</span>
+                    </a>
                 </div>
             </div>
         </div>
@@ -115,7 +121,7 @@
 {% endblock %}
 {% block scripts %}
     {{ super() }}
-    <script type="text/javascript" src="https://fastly.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <script>
     let baseURL = {{ url_for('ot.get_all_ot_records_table', announcement_id=announcement_id, staff_id=staff.id)|tojson|safe }}
     let checkInBaseURL = {{ url_for('ot.add_checkin_record', staff_id=staff.id)|tojson|safe }}
@@ -249,6 +255,9 @@
     }
     function download_report() {
         window.location = baseURL + '?download=yes&format=report&start=' + $("input[name='dates']").data("daterangepicker").startDate.toISOString()+'&end=' + $("input[name='dates']").data("daterangepicker").endDate.toISOString()
+    }
+    function download_finance_pdf() {
+        window.location = baseURL + '?download=yes&format=finance-pdf&start=' + $("input[name='dates']").data("daterangepicker").startDate.toISOString()+'&end=' + $("input[name='dates']").data("daterangepicker").endDate.toISOString()
     }
     function download_count_data() {
         window.location = baseURL + '?download=yes&download_data=counts&format=report&start=' + $("input[name='dates']").data("daterangepicker").startDate.toISOString()+'&end=' + $("input[name='dates']").data("daterangepicker").endDate.toISOString()

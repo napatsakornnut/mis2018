@@ -1,5 +1,20 @@
 {% extends 'base.html' %}
 {% include 'nav.html' %}
+{% block head %}
+    {{ super() }}
+    <style>
+        .social-signin-group {
+            margin-top: 1rem;
+            padding: 1rem;
+            border: 1px solid #dbdbdb;
+            border-radius: 0.75rem;
+        }
+
+        .social-signin-group .field:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+{% endblock %}
 {% block page_content %}
 <section class="section">
     <div class="container has-text-centered">
@@ -45,21 +60,39 @@
                         &ensp;&ensp;<a href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
                         <br>
                         <br>
-                        <div class="field is-grouped is-grouped-centered">
+                        <div class="field">
                             <div class="control">
-                                {{ form.submit(class='button is-info') }}
+                                {{ form.submit(class='button is-info is-rounded is-fullwidth', value='Sign In') }}
                             </div>
+                        </div>
+                        {% if (google_login_enabled and not linking_line) or not linking_line %}
+                        <div class="social-signin-group has-text-left">
+                            {% if google_login_enabled and not linking_line %}
+                            <div class="field">
+                                <div class="control">
+                                    <a href="{{ url_for('auth.google_login', next=request.args.get('next')) }}" class="button is-danger is-rounded is-fullwidth">
+                                        <span class="icon">
+                                            <i class="fab fa-google"></i>
+                                        </span>
+                                        <span>Sign in with Google</span>
+                                    </a>
+                                </div>
+                            </div>
+                            {% endif %}
                             {% if not linking_line %}
-                            <div class="control">
-                                <a href="{{ url_for('auth.line_login') }}" class="button is-success">
-                                    <span class="icon">
-                                        <i class="fab fa-line fa-2x"></i>
-                                    </span>
-                                    <span>Line login</span>
-                                </a>
+                            <div class="field">
+                                <div class="control">
+                                    <a href="{{ url_for('auth.line_login') }}" class="button is-success is-rounded is-fullwidth">
+                                        <span class="icon">
+                                            <i class="fab fa-line fa-2x"></i>
+                                        </span>
+                                        <span>Line login</span>
+                                    </a>
+                                </div>
                             </div>
                             {% endif %}
                         </div>
+                        {% endif %}
                     </form>
                 </div>
             </div>
