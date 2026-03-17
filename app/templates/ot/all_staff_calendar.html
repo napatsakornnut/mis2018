@@ -46,6 +46,12 @@
                          </span>
                         <span>report</span>
                     </a>
+                    <a class="button is-danger" onclick="download_finance_pdf()">
+                         <span class="icon">
+                             <i class="fa-solid fa-file-pdf"></i>
+                         </span>
+                        <span>finance pdf</span>
+                    </a>
                     <a class="button is-link" onclick="download_shedule()">
                          <span class="icon">
                              <i class="fa-solid fa-download"></i>
@@ -178,6 +184,9 @@
     }
     function download_report() {
         window.location = baseURL + '?download=yes&format=report&start=' + $("input[name='dates']").data("daterangepicker").startDate.toISOString()+'&end=' + $("input[name='dates']").data("daterangepicker").endDate.toISOString()
+    }
+    function download_finance_pdf() {
+        window.location = baseURL + '?download=yes&format=finance-pdf&start=' + $("input[name='dates']").data("daterangepicker").startDate.toISOString()+'&end=' + $("input[name='dates']").data("daterangepicker").endDate.toISOString()
     }
     </script>
 {% endblock %}
