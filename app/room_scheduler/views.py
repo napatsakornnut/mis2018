@@ -152,8 +152,13 @@ def new_event():
 def show_event_detail(event_id=None):
     if event_id:
         event = RoomEvent.query.get(event_id)
+        master_id = event.master_id or event.id
+        if event.master_id or event.secondary:
+            repeat_events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)).order_by(RoomEvent.start)
+        else:
+            repeat_events = None
         if event:
-            return render_template('scheduler/event_detail.html', event=event,
+            return render_template('scheduler/event_detail.html', event=event, repeat_events=repeat_events,
                                    event_start=localtz.localize(event.datetime.lower),
                                    event_end=localtz.localize(event.datetime.upper),
                                    )
@@ -170,13 +175,13 @@ def cancel(event_id=None):
 
     cancelled_datetime = arrow.now('Asia/Bangkok').datetime
     event = RoomEvent.query.get(event_id)
+    master_id = event.master_id or event.id
     event.cancelled_at = cancelled_datetime
     event.cancelled_by = current_user.id
     db.session.add(event)
 
     if event.master_id or event.secondary:
 
-        master_id = event.master_id or event.id
         events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)).order_by(RoomEvent.start)
         event_times = ', '.join(
             f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
