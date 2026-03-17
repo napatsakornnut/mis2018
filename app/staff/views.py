@@ -4772,15 +4772,18 @@ def get_all_employees():
     search_term = request.args.get('term', '')
     key = request.args.get('key', 'id')
     group = request.args.get('group')
+    include_exemployees = request.args.get('include_exemployees', '').lower() in ('1', 'true', 'yes')
     results = []
     query = StaffPersonalInfo.query
     if group == 'academic':
         query = query.filter_by(academic_staff=True)
-    query = query.filter(StaffPersonalInfo.retirement_date == None) \
-        .filter(StaffPersonalInfo.resignation_date == None)
+
+    if not include_exemployees:
+        query = query.filter(StaffPersonalInfo.retirement_date == None).\
+            filter(StaffPersonalInfo.resignation_date == None).\
+            filter(or_(StaffPersonalInfo.retired==False, StaffPersonalInfo.retired.is_(None)))
     for staff in query:
-        if (search_term in staff.fullname or search_term in staff.staff_account.email) \
-                and staff.retired is not True:
+        if (search_term in staff.fullname) or (search_term in staff.staff_account.email):
             index_ = getattr(staff, key) if hasattr(staff, key) else getattr(staff.staff_account, key)
             results.append({
                 "id": index_,
