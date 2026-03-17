@@ -138,18 +138,18 @@
                             </div>
                         </div>
                     </div>
-{#                    <div class="field is-horizontal">#}
-{#                        <div class="field-label is-normal">#}
-{#                            <label class="label">จองซ้ำจนถึงวันที่</label>#}
-{#                        </div>#}
-{#                        <div class="field-body">#}
-{#                            <div class="field">#}
-{#                                <div class="control">#}
-{#                                    {{ form.end(class='input') }}#}
-{#                                </div>#}
-{#                            </div>#}
-{#                        </div>#}
-{#                    </div>#}
+                    {#                    <div class="field is-horizontal">#}
+                    {#                        <div class="field-label is-normal">#}
+                    {#                            <label class="label">จองซ้ำจนถึงวันที่</label>#}
+                    {#                        </div>#}
+                    {#                        <div class="field-body">#}
+                    {#                            <div class="field">#}
+                    {#                                <div class="control">#}
+                    {#                                    {{ form.end(class='input') }}#}
+                    {#                                </div>#}
+                    {#                            </div>#}
+                    {#                        </div>#}
+                    {#                    </div>#}
                     <div class="field is-horizontal">
                         <div class="field-label is-normal">
                             <label class="label">{{ form.repeat_end.label }}</label>
@@ -226,8 +226,8 @@
                                     <span class="icon">
                                         <i class="fa-solid fa-plus"></i>
                                     </span>
-                                    <span>เพิ่มกลุ่ม</span>
-                                </a>
+                                <span>เพิ่มกลุ่ม</span>
+                            </a>
                         </div>
                     </div>
                     <div class="field is-horizontal">
@@ -281,7 +281,8 @@
                                 <div class="control">
                                     {{ form.note(class="textarea", placeholder="หากมีอาหารว่าง กรุณาส่งรายชื่อผู้เข้าร่วมตามจำนวนอาหารแก่หน่วยอาคารฯ หลังจบกิจกรรม") }}
                                 </div>
-                                <p class="help is-danger">หากมีอาหารว่าง กรุณาส่งรายชื่อผู้เข้าร่วมตามจำนวนอาหารแก่หน่วยอาคารฯ หลังจบกิจกรรม (โทร 2116)</p>
+                                <p class="help is-danger">หากมีอาหารว่าง
+                                    กรุณาส่งรายชื่อผู้เข้าร่วมตามจำนวนอาหารแก่หน่วยอาคารฯ หลังจบกิจกรรม (โทร 2116)</p>
                             </div>
                         </div>
                     </div>
@@ -305,7 +306,8 @@
 {% block scripts %}
     {{ super() }}
     <script src="https://fastly.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    <script type="text/javascript" src="https://fastly.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script type="text/javascript"
+            src="https://fastly.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <script type="text/javascript" src="//fastly.jsdelivr.net/momentjs/latest/moment-with-locales.min.js"></script>
     <script type="text/javascript">
         const DATETIME_FORMAT = 'DD-MM-YYYY HH:mm:ss'
@@ -376,11 +378,11 @@
                     cancelLabel: 'Clear'
                 }
             });
-            $('input[name="repeat_end"]').on('apply.daterangepicker', function(ev, picker) {
+            $('input[name="repeat_end"]').on('apply.daterangepicker', function (ev, picker) {
                 $(this).val(picker.startDate.format(DATE_FORMAT));
             });
 
-            $('input[name="repeat_end"]').on('cancel.daterangepicker', function(ev, picker) {
+            $('input[name="repeat_end"]').on('cancel.daterangepicker', function (ev, picker) {
                 $(this).val('');
             });
 
@@ -389,11 +391,11 @@
                 $('input[name="start"]').change(function () {
                     let endDate = moment($('input[name="repeat_end"]').val(), DATE_FORMAT)
                     let startDate = moment($('input[name="start"]').val(), DATETIME_FORMAT)
-                    console.log('s', startDate)
-                    console.log('e', endDate)
                     if (startDate.format(DATE_FORMAT) >= endDate.format(DATE_FORMAT)) {
+                        {% if not repeat_end %}
+                            $('input[name="repeat_end"]').val('');
+                        {% endif %}
                         alert('กรุณาตรวจสอบวันเริ่มและสิ้นสุดอีกครั้ง')
-                        $('input[name="repeat_end"]').val('');
                     } else {
                         htmx.ajax('GET',
                             '{{ url_for("room.clear_status") }}',
@@ -408,8 +410,10 @@
                     let endDate = moment($('input[name="repeat_end"]').val(), DATE_FORMAT)
                     let startDate = moment($('input[name="start"]').val(), DATETIME_FORMAT)
                     if (startDate.format(DATE_FORMAT) >= endDate.format(DATE_FORMAT)) {
+                        {% if not repeat_end %}
+                            $('input[name="repeat_end"]').val('');
+                        {% endif %}
                         alert('กรุณาตรวจสอบวันเริ่มและสิ้นสุดอีกครั้ง')
-                        $('input[name="repeat_end"]').val('');
                     } else {
                         htmx.ajax('GET',
                             '{{ url_for("room.clear_status") }}',
@@ -421,58 +425,58 @@
                     }
                 })
             }
-        {#    $('input[name="end"]').daterangepicker({#}
-        {#        showDropdowns: true,#}
-        {#        singleDatePicker: true,#}
-        {#        timePicker: true,#}
-        {#        timePickerIncrement: 15,#}
-        {#        timePicker24Hour: true,#}
-        {#        buttonClasses: 'button is-small',#}
-        {#        applyButtonClasses: 'is-info',#}
-        {#        cancelButtonClasses: 'is-text',#}
-        {#        {% if not end %}#}
-        {#            startDate: moment().startOf('hour').add(1, 'hour'),#}
-        {#        {% else %}#}
-        {#            startDate: moment({{ end.isoformat()|tojson|safe }}).format(DATETIME_FORMAT),#}
-        {#        {% endif %}#}
-        {#        locale: {#}
-        {#            format: DATETIME_FORMAT#}
-        {#        }#}
-        {#    });#}
-        {#    $('input[name="start"]').change(function () {#}
-        {#        let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)#}
-        {#        let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)#}
-        {#        $('input[name="end"]').data('daterangepicker')#}
-        {#            .setStartDate(startDateTime.add(1, 'hours'))#}
-        {#        if (startDateTime.format() == endDateTime.format()) {#}
-        {#            alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')#}
-        {#        } else {#}
-        {#            htmx.ajax('GET',#}
-        {#                '{{ url_for("room.clear_status") }}',#}
-        {#                {#}
-        {#                    source: '#' + $(this).attr('id'),#}
-        {#                    target: '#availability',#}
-        {#                    swap: 'innerHTML',#}
-        {#                })#}
-        {#        }#}
-        {#    })#}
-        {#    $('input[name="end"]').on('apply.daterangepicker', function () {#}
-        {#        let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)#}
-        {#        let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)#}
-        {#        if (startDateTime.format() == endDateTime.format()) {#}
-        {#            alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')#}
-        {#            $('input[name="end"]').data('daterangepicker')#}
-        {#                .setStartDate(startDateTime.add(1, 'hours'))#}
-        {#        } else {#}
-        {#            htmx.ajax('GET',#}
-        {#                '{{ url_for("room.clear_status") }}',#}
-        {#                {#}
-        {#                    source: '#' + $(this).attr('id'),#}
-        {#                    target: '#availability',#}
-        {#                    swap: 'innerHTML',#}
-        {#                })#}
-        {#        }#}
-        {#    })#}
+            {#    $('input[name="end"]').daterangepicker({#}
+            {#        showDropdowns: true,#}
+            {#        singleDatePicker: true,#}
+            {#        timePicker: true,#}
+            {#        timePickerIncrement: 15,#}
+            {#        timePicker24Hour: true,#}
+            {#        buttonClasses: 'button is-small',#}
+            {#        applyButtonClasses: 'is-info',#}
+            {#        cancelButtonClasses: 'is-text',#}
+            {#        {% if not end %}#}
+            {#            startDate: moment().startOf('hour').add(1, 'hour'),#}
+            {#        {% else %}#}
+            {#            startDate: moment({{ end.isoformat()|tojson|safe }}).format(DATETIME_FORMAT),#}
+            {#        {% endif %}#}
+            {#        locale: {#}
+            {#            format: DATETIME_FORMAT#}
+            {#        }#}
+            {#    });#}
+            {#    $('input[name="start"]').change(function () {#}
+            {#        let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)#}
+            {#        let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)#}
+            {#        $('input[name="end"]').data('daterangepicker')#}
+            {#            .setStartDate(startDateTime.add(1, 'hours'))#}
+            {#        if (startDateTime.format() == endDateTime.format()) {#}
+            {#            alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')#}
+            {#        } else {#}
+            {#            htmx.ajax('GET',#}
+            {#                '{{ url_for("room.clear_status") }}',#}
+            {#                {#}
+            {#                    source: '#' + $(this).attr('id'),#}
+            {#                    target: '#availability',#}
+            {#                    swap: 'innerHTML',#}
+            {#                })#}
+            {#        }#}
+            {#    })#}
+            {#    $('input[name="end"]').on('apply.daterangepicker', function () {#}
+            {#        let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)#}
+            {#        let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)#}
+            {#        if (startDateTime.format() == endDateTime.format()) {#}
+            {#            alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')#}
+            {#            $('input[name="end"]').data('daterangepicker')#}
+            {#                .setStartDate(startDateTime.add(1, 'hours'))#}
+            {#        } else {#}
+            {#            htmx.ajax('GET',#}
+            {#                '{{ url_for("room.clear_status") }}',#}
+            {#                {#}
+            {#                    source: '#' + $(this).attr('id'),#}
+            {#                    target: '#availability',#}
+            {#                    swap: 'innerHTML',#}
+            {#                })#}
+            {#        }#}
+            {#    })#}
         });
     </script>
 {% endblock %}
