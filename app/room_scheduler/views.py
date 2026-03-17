@@ -294,23 +294,23 @@ def edit_detail(event_id):
 
                     current_startdatetime = current_date.datetime
                     current_enddatetime = end_datetime.datetime
-                    start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
-                    end_str = end_datetime.datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                    # start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                    # end_str = end_datetime.datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
                     event_overlaps = get_overlaps(event.room_id, current_startdatetime, current_enddatetime)
                     if not event_overlaps:
                         create_event(current_startdatetime, current_enddatetime, master_id, event.room_id, form)
-                        no += 1
-                        message = f"รายการจองซ้ำลำดับที่ {no} : {event.title} ห้อง {event.room.number} {event.room.location} เวลา {start_str} - {end_str}"
-                        row_messages.append({"type": "info", "message": message})
-                    else:
-                        overlap_no += 1
-                        overlap_time = ''.join(
-                            f"{evt_overlap.datetime.lower.astimezone(localtz).strftime('%H:%M')} - "
-                            f"{evt_overlap.datetime.upper.astimezone(localtz).strftime('%H:%M')} ({event.title})"
-                            for evt_overlap in event_overlaps
-                            )
-                        message = f"รายการที่ไม่สามารถจองได้ลำดับที่ {overlap_no} : {event.title} ห้อง {event.room.number} {event.room.location} เวลา {start_str} - {end_str} เนื่องจากมีการจองในเวลา {overlap_time}"
-                        row_messages.append({"type": "danger", "message": message})
+                        # no += 1
+                        # message = f"รายการจองซ้ำลำดับที่ {no} : {event.title} ห้อง {event.room.number} {event.room.location} เวลา {start_str} - {end_str}"
+                        # row_messages.append({"type": "info", "message": message})
+                    # else:
+                    #     overlap_no += 1
+                    #     overlap_time = ''.join(
+                    #         f"{evt_overlap.datetime.lower.astimezone(localtz).strftime('%H:%M')} - "
+                    #         f"{evt_overlap.datetime.upper.astimezone(localtz).strftime('%H:%M')} ({event.title})"
+                    #         for evt_overlap in event_overlaps
+                    #         )
+                    #     message = f"รายการที่ไม่สามารถจองได้ลำดับที่ {overlap_no} : {event.title} ห้อง {event.room.number} {event.room.location} เวลา {start_str} - {end_str} เนื่องจากมีการจองในเวลา {overlap_time}"
+                    #     row_messages.append({"type": "danger", "message": message})
                 current_date = current_date.shift(days=day)
         elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
             flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
@@ -388,9 +388,9 @@ def edit_detail(event_id):
         else:
             print(msg, event.room.coordinator)
         flash(u'อัพเดตรายการเรียบร้อย', 'success')
-        if row_messages:
-            for msg in row_messages:
-                flash(msg["message"], msg["type"])
+        # if row_messages:
+        #     for msg in row_messages:
+        #         flash(msg["message"], msg["type"])
         return redirect(url_for('room.index'))
     else:
         for field, error in form.errors.items():
@@ -491,22 +491,22 @@ def room_reserve(room_id):
 
                         current_startdatetime = current_date.datetime
                         current_enddatetime = end_datetime.datetime
-                        start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
-                        end_str = end_datetime.datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                        # start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                        # end_str = end_datetime.datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
                         event_overlaps = get_overlaps(room_id, current_startdatetime, current_enddatetime)
                         if not event_overlaps:
                             create_event(current_startdatetime, current_enddatetime, new_event.id, room_id, form)
-                            no += 1
-                            message = f"รายการจองซ้ำลำดับที่ {no} : {new_event.title} ห้อง {room.number} {room.location} เวลา {start_str} - {end_str}"
-                            row_messages.append({"type": "info", "message": message})
-                        else:
-                            overlap_no += 1
-                            overlap_time = ''.join(f"{localtz.localize(evt.datetime.lower).strftime('%H:%M')} - "
-                                                      f"{localtz.localize(evt.datetime.upper).strftime('%H:%M')} ({evt.title})"
-                                                      for evt in event_overlaps
-                                                      )
-                            message = f"รายการที่ไม่สามารถจองได้ลำดับที่ {overlap_no} : {new_event.title} ห้อง {room.number} {room.location} เวลา {start_str} - {end_str} เนื่องจากมีการจองในเวลา {overlap_time}"
-                            row_messages.append({"type": "danger", "message": message})
+                        #     no += 1
+                        #     message = f"รายการจองซ้ำลำดับที่ {no} : {new_event.title} ห้อง {room.number} {room.location} เวลา {start_str} - {end_str}"
+                        #     row_messages.append({"type": "info", "message": message})
+                        # else:
+                        #     overlap_no += 1
+                        #     overlap_time = ''.join(f"{localtz.localize(evt.datetime.lower).strftime('%H:%M')} - "
+                        #                               f"{localtz.localize(evt.datetime.upper).strftime('%H:%M')} ({evt.title})"
+                        #                               for evt in event_overlaps
+                        #                               )
+                        #     message = f"รายการที่ไม่สามารถจองได้ลำดับที่ {overlap_no} : {new_event.title} ห้อง {room.number} {room.location} เวลา {start_str} - {end_str} เนื่องจากมีการจองในเวลา {overlap_time}"
+                        #     row_messages.append({"type": "danger", "message": message})
                     current_date = current_date.shift(days=day)
             elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
                 flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
@@ -558,9 +558,9 @@ def room_reserve(room_id):
             else:
                 print(msg, room.coordinators, new_event.note)
             flash(u'บันทึกการจองห้องเรียบร้อยแล้ว', 'success')
-            if row_messages:
-                for msg in row_messages:
-                    flash(msg["message"], msg["type"])
+            # if row_messages:
+            #     for msg in row_messages:
+            #         flash(msg["message"], msg["type"])
             return redirect(url_for('room.show_event_detail', event_id=new_event.id))
     else:
         for field, error in form.errors.items():
