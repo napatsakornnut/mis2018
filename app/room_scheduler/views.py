@@ -169,38 +169,25 @@ def show_event_detail(event_id=None):
 @room.route('/events/cancel/<int:event_id>')
 @login_required
 def cancel(event_id=None):
-    event_times = None
     if not event_id:
         return redirect(url_for('room.index'))
 
     cancelled_datetime = arrow.now('Asia/Bangkok').datetime
     event = RoomEvent.query.get(event_id)
-    master_id = event.master_id or event.id
+    if not event:
+        flash('ไม่พบรายการจองที่ต้องการยกเลิก', 'danger')
+        return redirect(url_for('room.index'))
+
     event.cancelled_at = cancelled_datetime
     event.cancelled_by = current_user.id
     db.session.add(event)
-
-    if event.master_id or event.secondary:
-
-        events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)).order_by(RoomEvent.start)
-        event_times = ', '.join(
-            f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
-            f"{arrow.get(other_event.end, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')}"
-            for other_event in events
-        )
-        for evt in events:
-            evt.cancelled_at = cancelled_datetime
-            evt.cancelled_by = current_user.id
-            db.session.add(evt)
     db.session.commit()
+
     start = localtz.localize(event.datetime.lower)
     end = localtz.localize(event.datetime.upper)
-    if event_times:
-        text = f' เวลา {event_times}'
-        msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {event_times}.'
-    else:
-        text = f' เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}'
-        msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}.'
+    event_time = f'{start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}'
+    text = f' เวลา {event_time}'
+    msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {event_time}.'
     if not current_app.debug:
         if event.note:
             for coord in event.room.coordinators:
