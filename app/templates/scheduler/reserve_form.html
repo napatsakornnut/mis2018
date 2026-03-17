@@ -157,7 +157,7 @@
                         <div class="field-body">
                             <div class="field">
                                 <div class="control">
-                                    {{ form.repeat_end(class='input') }}
+                                    {{ form.repeat_end(class='input', type='text') }}
                                 </div>
                             </div>
                         </div>
@@ -309,6 +309,7 @@
     <script type="text/javascript" src="//fastly.jsdelivr.net/momentjs/latest/moment-with-locales.min.js"></script>
     <script type="text/javascript">
         const DATETIME_FORMAT = 'DD-MM-YYYY HH:mm:ss'
+        const DATE_FORMAT = 'YYYY-MM-DD'
         let checkAvailability = function (e) {
             let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)
             let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)
@@ -360,58 +361,118 @@
                     format: DATETIME_FORMAT
                 }
             });
-            $('input[name="end"]').daterangepicker({
-                showDropdowns: true,
+            $('input[name="repeat_end"]').daterangepicker({
                 singleDatePicker: true,
-                timePicker: true,
-                timePickerIncrement: 15,
-                timePicker24Hour: true,
+                showDropdowns: true,
+                autoUpdateInput: false,
                 buttonClasses: 'button is-small',
                 applyButtonClasses: 'is-info',
                 cancelButtonClasses: 'is-text',
-                {% if not end %}
-                    startDate: moment().startOf('hour').add(1, 'hour'),
-                {% else %}
-                    startDate: moment({{ end.isoformat()|tojson|safe }}).format(DATETIME_FORMAT),
+                {% if repeat_end %}
+                    startDate: moment({{ repeat_end.isoformat()|tojson|safe }}).format(DATE_FORMAT),
                 {% endif %}
                 locale: {
-                    format: DATETIME_FORMAT
+                    format: DATE_FORMAT,
+                    cancelLabel: 'Clear'
                 }
             });
-            $('input[name="start"]').change(function () {
-                let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)
-                let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)
-                $('input[name="end"]').data('daterangepicker')
-                    .setStartDate(startDateTime.add(1, 'hours'))
-                if (startDateTime.format() == endDateTime.format()) {
-                    alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')
-                } else {
-                    htmx.ajax('GET',
-                        '{{ url_for("room.clear_status") }}',
-                        {
-                            source: '#' + $(this).attr('id'),
-                            target: '#availability',
-                            swap: 'innerHTML',
-                        })
-                }
-            })
-            $('input[name="end"]').on('apply.daterangepicker', function () {
-                let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)
-                let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)
-                if (startDateTime.format() == endDateTime.format()) {
-                    alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')
-                    $('input[name="end"]').data('daterangepicker')
-                        .setStartDate(startDateTime.add(1, 'hours'))
-                } else {
-                    htmx.ajax('GET',
-                        '{{ url_for("room.clear_status") }}',
-                        {
-                            source: '#' + $(this).attr('id'),
-                            target: '#availability',
-                            swap: 'innerHTML',
-                        })
-                }
-            })
-        })
+            $('input[name="repeat_end"]').on('apply.daterangepicker', function(ev, picker) {
+                $(this).val(picker.startDate.format(DATE_FORMAT));
+            });
+
+            $('input[name="repeat_end"]').on('cancel.daterangepicker', function(ev, picker) {
+                $(this).val('');
+            });
+
+            let repeatEndVal = $('input[name="repeat_end"]').data('daterangepicker')
+            if (repeatEndVal.startDate) {
+                $('input[name="start"]').change(function () {
+                    let endDate = moment($('input[name="repeat_end"]').val(), DATE_FORMAT)
+                    let startDate = moment($('input[name="start"]').val(), DATETIME_FORMAT)
+                    console.log('s', startDate)
+                    console.log('e', endDate)
+                    if (startDate.format(DATE_FORMAT) >= endDate.format(DATE_FORMAT)) {
+                        alert('กรุณาตรวจสอบวันเริ่มและสิ้นสุดอีกครั้ง')
+                        $('input[name="repeat_end"]').val('');
+                    } else {
+                        htmx.ajax('GET',
+                            '{{ url_for("room.clear_status") }}',
+                            {
+                                source: '#' + $(this).attr('id'),
+                                target: '#availability',
+                                swap: 'innerHTML',
+                            })
+                    }
+                })
+                $('input[name="repeat_end"]').on('apply.daterangepicker', function () {
+                    let endDate = moment($('input[name="repeat_end"]').val(), DATE_FORMAT)
+                    let startDate = moment($('input[name="start"]').val(), DATETIME_FORMAT)
+                    if (startDate.format(DATE_FORMAT) >= endDate.format(DATE_FORMAT)) {
+                        alert('กรุณาตรวจสอบวันเริ่มและสิ้นสุดอีกครั้ง')
+                        $('input[name="repeat_end"]').val('');
+                    } else {
+                        htmx.ajax('GET',
+                            '{{ url_for("room.clear_status") }}',
+                            {
+                                source: '#' + $(this).attr('id'),
+                                target: '#availability',
+                                swap: 'innerHTML',
+                            })
+                    }
+                })
+            }
+        {#    $('input[name="end"]').daterangepicker({#}
+        {#        showDropdowns: true,#}
+        {#        singleDatePicker: true,#}
+        {#        timePicker: true,#}
+        {#        timePickerIncrement: 15,#}
+        {#        timePicker24Hour: true,#}
+        {#        buttonClasses: 'button is-small',#}
+        {#        applyButtonClasses: 'is-info',#}
+        {#        cancelButtonClasses: 'is-text',#}
+        {#        {% if not end %}#}
+        {#            startDate: moment().startOf('hour').add(1, 'hour'),#}
+        {#        {% else %}#}
+        {#            startDate: moment({{ end.isoformat()|tojson|safe }}).format(DATETIME_FORMAT),#}
+        {#        {% endif %}#}
+        {#        locale: {#}
+        {#            format: DATETIME_FORMAT#}
+        {#        }#}
+        {#    });#}
+        {#    $('input[name="start"]').change(function () {#}
+        {#        let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)#}
+        {#        let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)#}
+        {#        $('input[name="end"]').data('daterangepicker')#}
+        {#            .setStartDate(startDateTime.add(1, 'hours'))#}
+        {#        if (startDateTime.format() == endDateTime.format()) {#}
+        {#            alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')#}
+        {#        } else {#}
+        {#            htmx.ajax('GET',#}
+        {#                '{{ url_for("room.clear_status") }}',#}
+        {#                {#}
+        {#                    source: '#' + $(this).attr('id'),#}
+        {#                    target: '#availability',#}
+        {#                    swap: 'innerHTML',#}
+        {#                })#}
+        {#        }#}
+        {#    })#}
+        {#    $('input[name="end"]').on('apply.daterangepicker', function () {#}
+        {#        let endDateTime = moment($('input[name="end"]').val(), DATETIME_FORMAT)#}
+        {#        let startDateTime = moment($('input[name="start"]').val(), DATETIME_FORMAT)#}
+        {#        if (startDateTime.format() == endDateTime.format()) {#}
+        {#            alert('กรุณาตรวจสอบวันและเวลาเริ่มและสิ้นสุดอีกครั้ง')#}
+        {#            $('input[name="end"]').data('daterangepicker')#}
+        {#                .setStartDate(startDateTime.add(1, 'hours'))#}
+        {#        } else {#}
+        {#            htmx.ajax('GET',#}
+        {#                '{{ url_for("room.clear_status") }}',#}
+        {#                {#}
+        {#                    source: '#' + $(this).attr('id'),#}
+        {#                    target: '#availability',#}
+        {#                    swap: 'innerHTML',#}
+        {#                })#}
+        {#        }#}
+        {#    })#}
+        });
     </script>
 {% endblock %}
