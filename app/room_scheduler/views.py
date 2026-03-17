@@ -160,6 +160,7 @@ def show_event_detail(event_id=None):
 @room.route('/events/cancel/<int:event_id>')
 @login_required
 def cancel(event_id=None):
+    event_times = None
     if not event_id:
         return redirect(url_for('room.index'))
 
@@ -170,8 +171,14 @@ def cancel(event_id=None):
     db.session.add(event)
 
     if event.master_id or event.secondary:
+
         master_id = event.master_id or event.id
-        events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id))
+        events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)).order_by(RoomEvent.start)
+        event_times = ', '.join(
+            f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
+            f"{arrow.get(other_event.end, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')}"
+            for other_event in events
+        )
         for evt in events:
             evt.cancelled_at = cancelled_datetime
             evt.cancelled_by = current_user.id
@@ -179,7 +186,12 @@ def cancel(event_id=None):
     db.session.commit()
     start = localtz.localize(event.datetime.lower)
     end = localtz.localize(event.datetime.upper)
-    msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}.'
+    if event_times:
+        text = f' เวลา {event_times}'
+        msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {event_times}.'
+    else:
+        text = f' เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}'
+        msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}.'
     if not current_app.debug:
         if event.note:
             for coord in event.room.coordinators:
@@ -191,7 +203,7 @@ def cancel(event_id=None):
             participant_emails = [f'{account.email}@mahidol.ac.th' for account in event.participants]
             title = f'แจ้งยกเลิกการนัดหมาย{event.category}'
             message = f'ขอแจ้งยกเลิกคำเชิญเข้าร่วม {event.title}'
-            message += f' เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}'
+            message += text
             message += f' ณ ห้อง {event.room.number} {event.room.location}'
             message += f'\n\nขออภัยในความไม่สะดวก'
             send_mail(participant_emails, title, message)
@@ -219,6 +231,7 @@ def approve_event(event_id):
 def edit_detail(event_id):
     no = 0
     overlap_no = 0
+    event_times = None
     row_messages = []
     event = RoomEvent.query.get(event_id)
     master_id = event.master_id or event.id
@@ -295,7 +308,12 @@ def edit_detail(event_id):
                         row_messages.append({"type": "danger", "message": message})
                 current_date = current_date.shift(days=day)
         if event.master_id or event.secondary:
-            events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id))
+            events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)).order_by(RoomEvent.start)
+            event_times = ', '.join(
+                f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
+                f"{arrow.get(other_event.end, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')}"
+                for other_event in events
+            )
             for evt in events:
                 evt.title = event.title
                 evt.comment = event.comment
@@ -335,14 +353,20 @@ def edit_detail(event_id):
             participant_emails = [f'{account.email}@mahidol.ac.th' for account in event.participants]
             title = f'แจ้งแก้ไขการนัดหมาย{event.category}'
             message = f'ท่านได้รับเชิญให้เข้าร่วม {event.title}'
-            message += f' เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
+            if event_times:
+                message += f' เวลา {event_times}'
+            else:
+                message += f' เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
             message += f' ณ ห้อง {event.room.number} {event.room.location}'
             message += f'\n\nขอความอนุเคราะห์เข้าร่วมในวันและเวลาดังกล่าว'
             if not current_app.debug:
                 send_mail(participant_emails, title, message)
             else:
                 print(message)
-        msg = f'{event.creator.fullname} ได้แก้ไขการจองห้อง {event.room} สำหรับ {event.title} เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
+        if event_times:
+            msg = f'{event.creator.fullname} ได้แก้ไขการจองห้อง {event.room} สำหรับ {event.title} เวลา {event_times}.'
+        else:
+            msg = f'{event.creator.fullname} ได้แก้ไขการจองห้อง {event.room} สำหรับ {event.title} เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
         if not current_app.debug:
             if event.room.coordinator and event.room.coordinator.line_id:
                 try:
@@ -452,8 +476,7 @@ def room_reserve(room_id):
                             end_datetime = end_datetime.shift(hours=1)
                             if hour > 3 and end_datetime.hour == 12:
                                 end_datetime = end_datetime.shift(hours=1)
-                        # room_event = RoomEvent.query.filter_by(room_id=room_id, start=current_date.datetime,
-                        #                                        end=end_datetime.datetime).first()
+
                         current_startdatetime = current_date.datetime
                         current_enddatetime = end_datetime.datetime
                         start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
