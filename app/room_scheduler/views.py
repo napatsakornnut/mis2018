@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
-
+import calendar
 import dateutil.parser
 import arrow
 import pytz
+from datetime import datetime, timedelta
 from dateutil import parser
 from flask import render_template, jsonify, request, flash, redirect, url_for, current_app, make_response
 from flask_login import login_required, current_user
@@ -29,6 +29,25 @@ def send_mail(recp, title, message):
     message = Message(subject=title, body=message, recipients=recp)
     mail.send(message)
 
+
+def create_event(startdatetime, enddatetime, master_id, room_id, form):
+    event = RoomEvent()
+    form.populate_obj(event)
+    event.datetime = DateTimeRange(lower=startdatetime, upper=enddatetime, bounds='[]')
+    event.start = startdatetime
+    event.end = enddatetime
+    event.created_at = arrow.now('Asia/Bangkok').datetime
+    event.creator = current_user
+    event.room_id = room_id
+    event.master_id = master_id
+    if request.form.getlist('groups'):
+        for group_id in request.form.getlist('groups'):
+            group = StaffGroupDetail.query.get(group_id)
+            for g in group.group_members:
+                event.participants.append(g.staff)
+    db.session.add(event)
+    db.session.commit()
+    return event
 
 @room.route('/api/iocodes')
 @login_required
@@ -145,6 +164,7 @@ def show_event_detail(event_id=None):
 @room.route('/events/cancel/<int:event_id>')
 @login_required
 def cancel(event_id=None):
+    event_times = None
     if not event_id:
         return redirect(url_for('room.index'))
 
@@ -153,10 +173,29 @@ def cancel(event_id=None):
     event.cancelled_at = cancelled_datetime
     event.cancelled_by = current_user.id
     db.session.add(event)
+
+    if event.master_id or event.secondary:
+
+        master_id = event.master_id or event.id
+        events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)).order_by(RoomEvent.start)
+        event_times = ', '.join(
+            f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
+            f"{arrow.get(other_event.end, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')}"
+            for other_event in events
+        )
+        for evt in events:
+            evt.cancelled_at = cancelled_datetime
+            evt.cancelled_by = current_user.id
+            db.session.add(evt)
     db.session.commit()
     start = localtz.localize(event.datetime.lower)
     end = localtz.localize(event.datetime.upper)
-    msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}.'
+    if event_times:
+        text = f' เวลา {event_times}'
+        msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {event_times}.'
+    else:
+        text = f' เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}'
+        msg = f'{event.creator.fullname} ได้ยกเลิกการจอง {event.room.number} สำหรับ {event.title} เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}.'
     if not current_app.debug:
         if event.note:
             for coord in event.room.coordinators:
@@ -168,7 +207,7 @@ def cancel(event_id=None):
             participant_emails = [f'{account.email}@mahidol.ac.th' for account in event.participants]
             title = f'แจ้งยกเลิกการนัดหมาย{event.category}'
             message = f'ขอแจ้งยกเลิกคำเชิญเข้าร่วม {event.title}'
-            message += f' เวลา {start.strftime("%d/%m/%Y %H:%M")} - {end.strftime("%d/%m/%Y %H:%M")}'
+            message += text
             message += f' ณ ห้อง {event.room.number} {event.room.location}'
             message += f'\n\nขออภัยในความไม่สะดวก'
             send_mail(participant_emails, title, message)
@@ -194,7 +233,16 @@ def approve_event(event_id):
 @room.route('/events/edit/<int:event_id>', methods=['POST', 'GET'])
 @login_required
 def edit_detail(event_id):
+    no = 0
+    overlap_no = 0
+    event_times = None
+    row_messages = []
     event = RoomEvent.query.get(event_id)
+    master_id = event.master_id or event.id
+    old_booking = event.booking
+    old_repeat_end = arrow.get(event.repeat_end, 'Asia/Bangkok').date() if event.repeat_end else None
+    old_start = arrow.get(event.start, 'Asia/Bangkok').datetime
+    repeat_end = arrow.get(event.repeat_end, 'Asia/Bangkok').date() if event.repeat_end else None
     complaints = ComplaintRecord.query.filter(ComplaintRecord.topic.has(ComplaintTopic.code.in_(['room', 'runied'])),
                                               or_(ComplaintRecord.status.has(ComplaintStatus.code != 'completed'),
                                                   ComplaintRecord.status == None),
@@ -208,7 +256,6 @@ def edit_detail(event_id):
         hour = int(form.hour.data)
         start = arrow.get(form.start.data, 'Asia/Bangkok')
         end = start
-        # event_end = arrow.get(form.start.data, 'Asia/Bangkok').shift(hours=int(form.hour.data)).datetime
         for i in range(hour):
             end = end.shift(hours=1)
             if hour > 3 and end.hour == 12:
@@ -222,8 +269,8 @@ def edit_detail(event_id):
             return redirect(url_for('room.edit_detail', event_id=event_id))
 
         form.populate_obj(event)
+        repeat_end = arrow.get(form.repeat_end.data, 'Asia/Bangkok').date() if form.repeat_end.data else None
         event.datetime = DateTimeRange(lower=event_start, upper=event_end, bounds='[]')
-        print(event.datetime)
         event.updated_at = arrow.now('Asia/Bangkok').datetime
         event.updated_by = current_user.id
         if request.form.getlist('groups'):
@@ -232,19 +279,105 @@ def edit_detail(event_id):
                 for g in group.group_members:
                     event.participants.append(g.staff)
         db.session.add(event)
-        db.session.commit()
+        if (form.booking.data and form.repeat_end.data) and ((form.booking.data != old_booking) or (repeat_end != old_repeat_end) or (event_start != old_start)):
+            db.session.commit()
+            day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
+            current_date = start.shift(days=day)
+            while current_date.date() <= repeat_end:
+                if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
+                    end_datetime = current_date
+
+                    for i in range(hour):
+                        end_datetime = end_datetime.shift(hours=1)
+                        if hour > 3 and end_datetime.hour == 12:
+                            end_datetime = end_datetime.shift(hours=1)
+
+                    current_startdatetime = current_date.datetime
+                    current_enddatetime = end_datetime.datetime
+                    start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                    end_str = end_datetime.datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                    event_overlaps = get_overlaps(event.room_id, current_startdatetime, current_enddatetime)
+                    if not event_overlaps:
+                        create_event(current_startdatetime, current_enddatetime, master_id, event.room_id, form)
+                        no += 1
+                        message = f"รายการจองซ้ำลำดับที่ {no} : {event.title} ห้อง {event.room.number} {event.room.location} เวลา {start_str} - {end_str}"
+                        row_messages.append({"type": "info", "message": message})
+                    else:
+                        overlap_no += 1
+                        overlap_time = ''.join(
+                            f"{evt_overlap.datetime.lower.astimezone(localtz).strftime('%H:%M')} - "
+                            f"{evt_overlap.datetime.upper.astimezone(localtz).strftime('%H:%M')} ({event.title})"
+                            for evt_overlap in event_overlaps
+                            )
+                        message = f"รายการที่ไม่สามารถจองได้ลำดับที่ {overlap_no} : {event.title} ห้อง {event.room.number} {event.room.location} เวลา {start_str} - {end_str} เนื่องจากมีการจองในเวลา {overlap_time}"
+                        row_messages.append({"type": "danger", "message": message})
+                current_date = current_date.shift(days=day)
+        elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
+            flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
+            return render_template('scheduler/reserve_form.html', event=event, form=form, room=event.room,
+                                   start=start, end=end, complaints=complaints, repeat_end=repeat_end)
+        else:
+            db.session.commit()
+        if event.master_id or event.secondary:
+            events = RoomEvent.query.filter(or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)).order_by(RoomEvent.start)
+            event_times = ', '.join(
+                f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
+                f"{arrow.get(other_event.end, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')}"
+                for other_event in events
+            )
+            for evt in events:
+                evt.title = event.title
+                evt.comment = event.comment
+                evt.hour = event.hour
+                evt.booking = event.booking
+                evt.repeat_end = arrow.get(event.repeat_end, 'Asia/Bangkok').date()
+                evt.occupancy = event.occupancy
+                evt.participants = event.participants
+                evt.notify_participants = event.notify_participants
+                evt.note = event.note
+                evt.category_id = event.category_id
+                evt.updated_at = arrow.now('Asia/Bangkok').datetime
+                evt.updated_by = current_user.id
+                startdatetime = arrow.get(evt.start, 'Asia/Bangkok').datetime
+                hour = int(event.hour)
+                start = arrow.get(evt.start, 'Asia/Bangkok')
+                end = start
+
+                for i in range(hour):
+                    end = end.shift(hours=1)
+                    if hour > 3 and end.hour == 12:
+                        end = end.shift(hours=1)
+
+                enddatetime = end.datetime
+                evt.datetime = DateTimeRange(lower=startdatetime, upper=enddatetime, bounds='[]')
+                evt.start = startdatetime
+                evt.end = enddatetime
+
+                if request.form.getlist('groups'):
+                    for group_id in request.form.getlist('groups'):
+                        group = StaffGroupDetail.query.get(group_id)
+                        for g in group.group_members:
+                            evt.participants.append(g.staff)
+                db.session.add(evt)
+            db.session.commit()
         if event.participants and event.notify_participants:
             participant_emails = [f'{account.email}@mahidol.ac.th' for account in event.participants]
             title = f'แจ้งแก้ไขการนัดหมาย{event.category}'
             message = f'ท่านได้รับเชิญให้เข้าร่วม {event.title}'
-            message += f' เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
+            if event_times:
+                message += f' เวลา {event_times}'
+            else:
+                message += f' เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
             message += f' ณ ห้อง {event.room.number} {event.room.location}'
             message += f'\n\nขอความอนุเคราะห์เข้าร่วมในวันและเวลาดังกล่าว'
             if not current_app.debug:
                 send_mail(participant_emails, title, message)
             else:
                 print(message)
-        msg = f'{event.creator.fullname} ได้แก้ไขการจองห้อง {event.room} สำหรับ {event.title} เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
+        if event_times:
+            msg = f'{event.creator.fullname} ได้แก้ไขการจองห้อง {event.room} สำหรับ {event.title} เวลา {event_times}.'
+        else:
+            msg = f'{event.creator.fullname} ได้แก้ไขการจองห้อง {event.room} สำหรับ {event.title} เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
         if not current_app.debug:
             if event.room.coordinator and event.room.coordinator.line_id:
                 try:
@@ -255,12 +388,15 @@ def edit_detail(event_id):
         else:
             print(msg, event.room.coordinator)
         flash(u'อัพเดตรายการเรียบร้อย', 'success')
+        if row_messages:
+            for msg in row_messages:
+                flash(msg["message"], msg["type"])
         return redirect(url_for('room.index'))
     else:
         for field, error in form.errors.items():
             flash(f'{field}: {error}', 'danger')
     return render_template('scheduler/reserve_form.html', event=event, form=form, room=event.room,
-                           start=start, end=end, complaints=complaints)
+                           start=start, end=end, complaints=complaints, repeat_end=repeat_end)
 
 
 @room.route('/list', methods=['POST', 'GET'])
@@ -288,6 +424,9 @@ def room_list():
 @login_required
 def room_reserve(room_id):
     form = RoomEventForm()
+    no = 0
+    overlap_no = 0
+    row_messages = []
     room = RoomResource.query.get(room_id)
     complaints = ComplaintRecord.query.filter(ComplaintRecord.topic.has(ComplaintTopic.code.in_(['room', 'runied'])),
                                               or_(ComplaintRecord.status.has(ComplaintStatus.code!='completed'),
@@ -308,6 +447,9 @@ def room_reserve(room_id):
 
             enddatetime = end.datetime
         else:
+            start = None
+            end = None
+            hour = None
             startdatetime = None
             enddatetime = None
         # if form.end.data:
@@ -333,24 +475,79 @@ def room_reserve(room_id):
                     for g in group.group_members:
                         new_event.participants.append(g.staff)
             db.session.add(new_event)
-            db.session.commit()
+
+            if form.booking.data and form.repeat_end.data:
+                db.session.commit()
+                day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
+                current_date  = start.shift(days=day)
+                repeat_end = arrow.get(form.repeat_end.data, 'Asia/Bangkok').date()
+                while current_date.date() <= repeat_end:
+                    if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
+                        end_datetime = current_date
+                        for i in range(hour):
+                            end_datetime = end_datetime.shift(hours=1)
+                            if hour > 3 and end_datetime.hour == 12:
+                                end_datetime = end_datetime.shift(hours=1)
+
+                        current_startdatetime = current_date.datetime
+                        current_enddatetime = end_datetime.datetime
+                        start_str = current_startdatetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                        end_str = end_datetime.datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')
+                        event_overlaps = get_overlaps(room_id, current_startdatetime, current_enddatetime)
+                        if not event_overlaps:
+                            create_event(current_startdatetime, current_enddatetime, new_event.id, room_id, form)
+                            no += 1
+                            message = f"รายการจองซ้ำลำดับที่ {no} : {new_event.title} ห้อง {room.number} {room.location} เวลา {start_str} - {end_str}"
+                            row_messages.append({"type": "info", "message": message})
+                        else:
+                            overlap_no += 1
+                            overlap_time = ''.join(f"{localtz.localize(evt.datetime.lower).strftime('%H:%M')} - "
+                                                      f"{localtz.localize(evt.datetime.upper).strftime('%H:%M')} ({evt.title})"
+                                                      for evt in event_overlaps
+                                                      )
+                            message = f"รายการที่ไม่สามารถจองได้ลำดับที่ {overlap_no} : {new_event.title} ห้อง {room.number} {room.location} เวลา {start_str} - {end_str} เนื่องจากมีการจองในเวลา {overlap_time}"
+                            row_messages.append({"type": "danger", "message": message})
+                    current_date = current_date.shift(days=day)
+            elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
+                flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
+                return render_template('scheduler/reserve_form.html', room=room, complaints=complaints, form=form)
+            else:
+                db.session.commit()
             # TODO: alert by Line for the same-day booking
+
+            if new_event.secondary:
+                event_times = ', '.join(
+                    f"{arrow.get(other_event.start, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')} - "
+                    f"{arrow.get(other_event.end, 'Asia/Bangkok').datetime.astimezone(localtz).strftime('%d/%m/%Y %H:%M')}"
+                    for other_event in new_event.secondary
+                    )
+            else:
+                event_times = None
+
             if new_event.participants and new_event.notify_participants:
                 participant_emails = [f'{account.email}@mahidol.ac.th' for account in new_event.participants]
                 title = f'แจ้งนัดหมาย{new_event.category}'
                 message = f'ท่านได้รับเชิญให้เข้าร่วม {new_event.title}'
-                message += f' เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
+                if event_times:
+                    message += f' เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}, {event_times}'
+                else:
+                    message += f' เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}'
                 message += f' ณ ห้อง {room.number} {room.location}'
                 message += f'\n\nขอความอนุเคราะห์เข้าร่วมในวันและเวลาดังกล่าว'
                 if not current_app.debug:
                     send_mail(participant_emails, title, message)
                 else:
                     print(message)
-
-            msg = (f'{new_event.creator.fullname} ได้จองห้อง {room} สำหรับ {new_event.title} '
-                   f'เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
-                   f'มีความต้องการเพิ่มเติมคือ {new_event.note}'
-                   )
+            if event_times:
+                msg = (f'{new_event.creator.fullname} ได้จองห้อง {room} สำหรับ {new_event.title} '
+                       f'เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}, {event_times}.'
+                       f'มีความต้องการเพิ่มเติมคือ {new_event.note}'
+                       )
+            else:
+                msg = (f'{new_event.creator.fullname} ได้จองห้อง {room} สำหรับ {new_event.title} '
+                       f'เวลา {startdatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {enddatetime.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
+                       f'มีความต้องการเพิ่มเติมคือ {new_event.note}'
+                       )
             if not current_app.debug:
                 if new_event.note:
                     for coord in room.coordinators:
@@ -361,6 +558,9 @@ def room_reserve(room_id):
             else:
                 print(msg, room.coordinators, new_event.note)
             flash(u'บันทึกการจองห้องเรียบร้อยแล้ว', 'success')
+            if row_messages:
+                for msg in row_messages:
+                    flash(msg["message"], msg["type"])
             return redirect(url_for('room.show_event_detail', event_id=new_event.id))
     else:
         for field, error in form.errors.items():
