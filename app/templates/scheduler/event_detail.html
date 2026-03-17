@@ -174,6 +174,18 @@
                     grid-template-columns: 1fr;
                 }
             }
+            .recurring-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0.5rem 0.75rem;
+                border-radius: 6px;
+                margin-bottom: 0.25rem;
+                background-color: #f1f5f9;
+            }
+            .recurring-item:hover {
+                background-color: #f0f7ff;
+            }
         </style>
         <div class="container event-detail-shell">
             <div class="columns">
@@ -246,7 +258,40 @@
                                 <p>{{ event.updated_at|localdatetime if event.updated_at else '-' }}</p>
                             </div>
                         </div>
+                        <div style="margin-top: 1.25rem;">
+                            <h3 class="title is-5 event-detail-section-title">รายการจองต่อเนื่อง</h3>
+                            <div class="recurring-list-container">
+                                {% if repeat_events %}
+                                    {% for repeat_event in repeat_events %}
+                                        <div class="recurring-item">
+                                            <span class="is-size-6">
+                                                <i class="far fa-calendar mr-2 has-text-grey"></i>
+                                                ครั้งที่ {{ loop.index }} : {{ repeat_event.start|localdatetime }} - {{ repeat_event.end|localdatetime }}
+                                            </span>
+                                            <div class="field has-addons">
+                                                <div class="control">
+                                                    <a href="{{ url_for('room.edit_detail', event_id=repeat_event.id) }}"
+                                                       class="button is-small is-warning is-light is-rounded">
+                                                        <span class="icon"><i class="fas fa-pencil-alt"></i></span>
+                                                    </a>
+                                                </div>
+                                                <div class="control">
+                                                    <a href="{{ url_for('room.cancel', event_id=repeat_event.id) }}"
+                                                       class="button is-small is-danger is-light is-rounded">
+                                                        <span class="icon"><i class="far fa-trash-alt"></i></span>
+                                                    </a>
+                                                </div>
 
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="recurring-item">
+                                        <span class="is-size-6">ไม่มีการจองต่อเนื่อง</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
                         {% if event.note or (current_user == event.creator and event.comment) %}
                             <div style="margin-top: 1.25rem;">
                                 <h3 class="title is-5 event-detail-section-title">บันทึกเพิ่มเติม</h3>
