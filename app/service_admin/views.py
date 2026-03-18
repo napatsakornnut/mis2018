@@ -2963,8 +2963,8 @@ def create_customer_detail(request_id):
                 service_request.receive_phone_number = quotation_address.phone_number
                 db.session.add(service_request)
                 remark = quotation_address.remark if quotation_address.remark else None
-                if current_user.customer_info.addresses:
-                    for address in current_user.customer_info.addresses:
+                if customer.addresses:
+                    for address in customer.addresses:
                         if customer.has_document_address():
                             if address.address_type == 'document':
                                 address.name = quotation_address.name
