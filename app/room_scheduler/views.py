@@ -35,6 +35,12 @@ def _ics_timestamp(dt):
     return dt.astimezone(pytz.utc).strftime('%Y%m%dT%H%M%SZ')
 
 
+def _ics_param_escape(value):
+    if not value:
+        return ''
+    return str(value).replace('\\', '\\\\').replace(';', r'\;').replace(',', r'\,').replace('"', r'\"')
+
+
 def build_room_event_ics(events, method='REQUEST'):
     if not events:
         return None
@@ -47,13 +53,14 @@ def build_room_event_ics(events, method='REQUEST'):
         'CALSCALE:GREGORIAN',
         f'METHOD:{method}',
     ]
-    organizer_email = f'{current_user.email}@mahidol.ac.th' if getattr(current_user, 'email', None) else 'no-reply@mahidol.ac.th'
-    organizer_name = _ics_escape(getattr(current_user, 'fullname', 'MUMT-MIS'))
 
     for event in events:
         start_dt = event.start if event.start.tzinfo else localtz.localize(event.start)
         end_dt = event.end if event.end.tzinfo else localtz.localize(event.end)
         room_name = f'{event.room.number} {event.room.location}'
+        organizer = event.creator or current_user
+        organizer_email = f'{organizer.email}@mahidol.ac.th' if getattr(organizer, 'email', None) else 'no-reply@mahidol.ac.th'
+        organizer_name = _ics_param_escape(getattr(organizer, 'fullname', 'MUMT-MIS'))
         description_parts = []
         if event.note:
             description_parts.append(event.note)
@@ -69,9 +76,25 @@ def build_room_event_ics(events, method='REQUEST'):
             f'SUMMARY:{_ics_escape(event.title)}',
             f'LOCATION:{_ics_escape(room_name)}',
             f'DESCRIPTION:{description}',
+            'STATUS:CONFIRMED',
+            'TRANSP:OPAQUE',
+            'SEQUENCE:0',
             f'ORGANIZER;CN={organizer_name}:MAILTO:{organizer_email}',
-            'END:VEVENT',
         ])
+        attendees = {}
+        for participant in event.participants or []:
+            if not getattr(participant, 'email', None):
+                continue
+            attendee_email = f'{participant.email}@mahidol.ac.th'
+            attendees[attendee_email.lower()] = _ics_param_escape(getattr(participant, 'fullname', participant.email))
+        if getattr(organizer, 'email', None):
+            attendees.setdefault(organizer_email.lower(), organizer_name)
+
+        for attendee_email, attendee_name in attendees.items():
+            lines.append(
+                f'ATTENDEE;CN={attendee_name};CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:MAILTO:{attendee_email}'
+            )
+        lines.append('END:VEVENT')
 
     lines.append('END:VCALENDAR')
     return '\r\n'.join(lines).encode('utf-8')
