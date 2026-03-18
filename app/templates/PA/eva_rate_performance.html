@@ -79,9 +79,9 @@
                         <table class="table is-striped is-fullwidth">
                             <thead>
                             <th>หมวด</th>
-                            <th>ข้อตกลงการปฏิบัติงาน <p class="help is-info">โครงการ/กระบวนการที่เกี่ยวข้อง</p><p class="help is-success">ตัวชี้วัดและเป้าหมาย</p></th>
+                            <th>ข้อตกลงการปฏิบัติงาน <p class="help is-info">โครงการ/กระบวนการที่เกี่ยวข้อง</p></th>
                             <th>%</th>
-                            <th>เกณฑ์ตามตัวชี้วัด</th>
+                            <th><p class="help is-success">ตัวชี้วัดและเป้าหมาย</p>เกณฑ์ตามตัวชี้วัด</th>
                             <th>ผลการดำเนินการ</th>
                             {% if for_self == 'false' %}
                             <th>คะแนนประเมินตนเอง</th>
@@ -95,7 +95,7 @@
                                     <td style="width: 5%">
                                         <p class="help">{{ s.item.category }}</p>
                                     </td>
-                                    <td style="width: 35%">
+                                    <td style="width: 30%">
                                         <p><strong>{{ s.item }}</strong></p>
                                         {% if s.item.strategy_activity %}
                                         <p class="help is-info">{{ s.item.strategy_activity }}</p>
@@ -103,14 +103,15 @@
                                         {% if s.item.process %}
                                         <p class="help is-info">{{ s.item.process }}</p>
                                         {% endif %}
-                                        <p class="help is-success">{{ s.kpi_item }} (เก็บข้อมูลจาก: {{ s.kpi_item.kpi.source }})</p>
+                                        <p class="help">(เก็บข้อมูลจาก: {{ s.kpi_item.kpi.source }})</p>
                                     </td>
                                     <td style="width: 2%">
                                         {{ s.item.percentage }}
                                     </td>
-                                    <td style="width: 18%">
+                                    <td style="width: 23%">
+                                        <p class="help is-success">{{ s.kpi_item }}</p>
                                     <ul>
-                                        <p class="help">{{ s.kpi_item.kpi.type }}</p>
+                                        <p class="help">ประเภท: {{ s.kpi_item.kpi.type }}</p>
                                         {% for kpi in s.kpi_item.kpi.pa_kpi_items %}
                                             <li><span class="icon"><i class="fa-solid fa-star has-text-light"></i></span>
                                                 <small>{{ kpi.goal }} ({{ kpi.level }} คะแนน)</small></li>
