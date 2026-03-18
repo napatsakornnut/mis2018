@@ -2210,9 +2210,9 @@ def login_scan():
             db.session.commit()
             try:
                 if activity == 'checked in':
-                    msg = f'ท่านได้ทำแสกนเข้างานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
+                    msg = f'ท่านได้ทำสแกนเข้างานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
                 else:
-                    msg = f'ท่านได้ทำแสกนออกงานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
+                    msg = f'ท่านได้ทำสแกนออกงานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
                 line_bot_api.push_message(to=person.staff_account.line_id, messages=TextSendMessage(text=msg))
             except LineBotApiError:
                 pass
@@ -2405,7 +2405,7 @@ def login_scan_gj():
                 qrcode_in_exp_datetime=qrcode_exp_datetime.astimezone(pytz.utc)
             )
             try:
-                msg = f'ท่านได้ทำแสกนเข้า/ออกงานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
+                msg = f'ท่านได้ทำสแกนเข้า/ออกงานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
                 line_bot_api.push_message(to=person.staff_account.line_id,
                                           messages=TextSendMessage(text=msg))
             except LineBotApiError:
@@ -4977,11 +4977,11 @@ def geo_checkin():
         db.session.commit()
         try:
             if activity == 'checked in':
-                msg = f'ท่านได้ทำแสกนเข้างานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
+                msg = f'ท่านได้ทำสแกนเข้างานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
             elif activity == 'checked out':
-                msg = f'ท่านได้ทำแสกนออกงานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
+                msg = f'ท่านได้ทำสแกนออกงานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
             else:
-                msg = f'ท่านได้ทำแสกนเข้า/ออกงานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
+                msg = f'ท่านได้ทำสแกนเข้า/ออกงานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
             line_bot_api.push_message(to=current_user.line_id, messages=TextSendMessage(text=msg))
         except LineBotApiError:
             pass
