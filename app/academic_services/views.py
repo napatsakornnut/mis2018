@@ -116,35 +116,6 @@ def download_file(key):
     return send_file(outfile, download_name=download_filename, as_attachment=True)
 
 
-def walk_form_fields(field, quote_column_names, cols=set(), keys=[], values='', depth=''):
-    field_name = field.name.split('-')[-1]
-    cols.add(field_name)
-    if isinstance(field, FormField) or isinstance(field, FieldList):
-        for f in field:
-            field_name = f.name.split('-')[-1]
-            cols.add(field_name)
-            if field_name == 'csrf_token' or field_name == 'submit':
-                continue
-            if isinstance(f, FormField) or isinstance(f, FieldList):
-                walk_form_fields(f, quote_column_names, cols, keys, values, depth + '-')
-            else:
-                if field_name in quote_column_names:
-                    if isinstance(f.data, list):
-                        for item in f.data:
-                            keys.append((field_name, values + str(item)))
-                    else:
-                        keys.append((field_name, values + str(f.data)))
-    else:
-        if field.name in quote_column_names:
-            if field.name != 'csrf_token' or field.name != 'submit':
-                if isinstance(field.data, list):
-                    for item in field.data:
-                        keys.append((field.name, values + str(item)))
-                else:
-                    keys.append((field.name, values + str(field.data)))
-    return keys
-
-
 # def request_data(service_request, type):
 #     data = service_request.data
 #     if service_request.sub_lab.code == 'bacteria':

@@ -50,11 +50,11 @@
                     </div>
                     <form method="post" action="{{ url_for('comp_tracker.admin_index', tab=tab) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="submit" value="Print" class="button is-success">
+{#                        <input type="submit" value="Print" class="button is-success">#}
                         <br/>
                         <table id="records" class="table is-fullwidth">
                             <thead>
-                            <th></th>
+{#                            <th></th>#}
                             <th>ID</th>
                             <th>รายละเอียด</th>
                             <th>หัวข้อ</th>
@@ -70,10 +70,10 @@
                                 {% if records %}
                                     {% for record in records|sort(attribute='created_at', reverse = True) %}
                                         <tr>
-                                            <td>
-                                                <input class="is-checkradio" id="{{ record.id }}" type="checkbox" name="selected_items" value="{{ record.id }}">
-                                                <label for="{{ record.id }}"></label>
-                                            </td>
+{#                                            <td>#}
+{#                                                <input class="is-checkradio" id="{{ record.id }}" type="checkbox" name="selected_items" value="{{ record.id }}">#}
+{#                                                <label for="{{ record.id }}"></label>#}
+{#                                            </td>#}
                                             <td>{{ record.id }}</td>
                                             <td style="width: 20em;">{{ record.desc }}</td>
                                             <td style="width: 15em;">{{ record.topic }}</td>
