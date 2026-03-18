@@ -1,16 +1,19 @@
 import calendar
 import datetime
 import arrow
+import os
 from collections import namedtuple
 from flask import render_template, request, redirect, url_for, current_app, make_response, flash
 from flask_login import login_required, current_user
+from flask_mail import Message
 from linebot.exceptions import LineBotApiError
 from linebot.models import TextSendMessage
 from app.auth.views import line_bot_api
 from app.besttime import besttime_bp
 from app.besttime.forms import BestTimePollMessageForm, BestTimePollForm, BestTimePollVoteForm, BestTimeMailForm
 from app.besttime.models import *
-from app.staff.views import send_mail
+from app.main import mail
+from app.staff.views import send_mail as base_send_mail
 
 VoteHour = namedtuple('VoteHour', ['start', 'end'])
 
@@ -23,12 +26,91 @@ vote_hours = [VoteHour(datetime.time(9, 0, 0, tzinfo=BKK_TZ),
               ]
 
 
-def send_mail_to_voters(poll, message, title):
+def _ics_escape(value):
+    if not value:
+        return ''
+    return str(value).replace('\\', '\\\\').replace(';', r'\;').replace(',', r'\,').replace('\n', r'\n')
+
+
+def _ics_param_escape(value):
+    if not value:
+        return ''
+    return str(value).replace('\\', '\\\\').replace(';', r'\;').replace(',', r'\,').replace('"', r'\"')
+
+
+def _ics_timestamp(dt):
+    return dt.astimezone(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+
+
+def build_besttime_slot_ics(slot):
+    organizer_email = os.getenv('MAIL_USERNAME') or 'no-reply@mt.mahidol.ac.th'
+    organizer_name = _ics_param_escape('MUMT-MIS')
+    description_parts = []
+    if slot.poll.desc:
+        description_parts.append(slot.poll.desc)
+    description_parts.append(f'Poll: {slot.poll.title}')
+    if getattr(slot.poll.creator, 'fullname', None):
+        description_parts.append(f'Created by: {slot.poll.creator.fullname}')
+    description = _ics_escape('\n'.join(description_parts))
+    lines = [
+        'BEGIN:VCALENDAR',
+        'PRODID:-//MUMT-MIS//BestTime//EN',
+        'VERSION:2.0',
+        'CALSCALE:GREGORIAN',
+        'METHOD:REQUEST',
+        'BEGIN:VEVENT',
+        f'UID:besttime-slot-{slot.id}@mt.mahidol.ac.th',
+        f'DTSTAMP:{_ics_timestamp(arrow.now("Asia/Bangkok").datetime)}',
+        f'DTSTART:{_ics_timestamp(slot.start)}',
+        f'DTEND:{_ics_timestamp(slot.end)}',
+        f'SUMMARY:{_ics_escape(slot.poll.title)}',
+        f'DESCRIPTION:{description}',
+        'STATUS:CONFIRMED',
+        'TRANSP:OPAQUE',
+        'SEQUENCE:0',
+        f'ORGANIZER;CN={organizer_name}:MAILTO:{organizer_email}',
+    ]
+    attendees = {}
+    for invitation in slot.poll.invitations:
+        voter = invitation.voter
+        if not getattr(voter, 'email', None):
+            continue
+        attendee_email = f'{voter.email}@mahidol.ac.th'
+        attendees[attendee_email.lower()] = _ics_param_escape(getattr(voter, 'fullname', voter.email))
+
+    for attendee_email, attendee_name in attendees.items():
+        lines.append(
+            f'ATTENDEE;CN={attendee_name};CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:MAILTO:{attendee_email}'
+        )
+
+    lines.extend([
+        'END:VEVENT',
+        'END:VCALENDAR',
+    ])
+    return '\r\n'.join(lines).encode('utf-8')
+
+
+def send_mail_with_attachments(recp, title, message, attachments=None):
+    email_message = Message(subject=title, body=message, recipients=recp)
+    for attachment in attachments or []:
+        email_message.attach(
+            filename=attachment['filename'],
+            data=attachment['data'],
+            content_type=attachment['content_type'],
+            headers=attachment.get('headers'),
+        )
+    mail.send(email_message)
+
+
+def send_mail_to_voters(poll, message, title, attachments=None):
     recipients = [f'{c.voter.email}@mahidol.ac.th' for c in poll.invitations]
     if current_app.debug:
         print(f'Mail sent to {recipients}. Message: {message}')
     else:
-        send_mail(recp=recipients, title=title, message=message)
+        if attachments:
+            send_mail_with_attachments(recp=recipients, title=title, message=message, attachments=attachments)
+        else:
+            base_send_mail(recp=recipients, title=title, message=message)
 
 
 @besttime_bp.route('/')
@@ -510,7 +592,17 @@ def send_mail_to_committee(slot_id):
             db.session.commit()
             msg = 'ขอแจ้งสรุปวันประชุม "{}" โดยกำหนดเป็นวันที่ {}'.format(slot.poll.title, slot)
             title = f'แจ้งสรุปวันประชุมจากผลการโหวต {slot.poll.title}'
-            send_mail_to_voters(slot.poll, form.message.data, title)
+            send_mail_to_voters(
+                slot.poll,
+                form.message.data,
+                title,
+                attachments=[{
+                    'filename': f'besttime-poll-{slot.poll.id}-slot-{slot.id}.ics',
+                    'data': build_besttime_slot_ics(slot),
+                    'content_type': 'text/calendar; charset=utf-8; method=REQUEST',
+                    'headers': [('Content-Class', 'urn:content-classes:calendarmessage')],
+                }],
+            )
             if not current_app.debug:
                 for c in slot.poll.invitations:
                     try:
