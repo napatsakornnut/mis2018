@@ -1,6 +1,7 @@
 import calendar
 import dateutil.parser
 import arrow
+import os
 import pytz
 from datetime import datetime, timedelta
 from dateutil import parser
@@ -53,18 +54,21 @@ def build_room_event_ics(events, method='REQUEST'):
         'CALSCALE:GREGORIAN',
         f'METHOD:{method}',
     ]
+    system_mail = os.getenv('MAIL_USERNAME') or 'no-reply@mt.mahidol.ac.th'
 
     for event in events:
         start_dt = event.start if event.start.tzinfo else localtz.localize(event.start)
         end_dt = event.end if event.end.tzinfo else localtz.localize(event.end)
         room_name = f'{event.room.number} {event.room.location}'
         organizer = event.creator or current_user
-        organizer_email = f'{organizer.email}@mahidol.ac.th' if getattr(organizer, 'email', None) else 'no-reply@mahidol.ac.th'
-        organizer_name = _ics_param_escape(getattr(organizer, 'fullname', 'MUMT-MIS'))
+        organizer_email = system_mail
+        organizer_name = _ics_param_escape('MUMT-MIS')
         description_parts = []
         if event.note:
             description_parts.append(event.note)
         description_parts.append(f'Room: {room_name}')
+        if getattr(organizer, 'fullname', None):
+            description_parts.append(f'Booked by: {organizer.fullname}')
         description = _ics_escape('\n'.join(description_parts))
 
         lines.extend([
@@ -87,8 +91,6 @@ def build_room_event_ics(events, method='REQUEST'):
                 continue
             attendee_email = f'{participant.email}@mahidol.ac.th'
             attendees[attendee_email.lower()] = _ics_param_escape(getattr(participant, 'fullname', participant.email))
-        if getattr(organizer, 'email', None):
-            attendees.setdefault(organizer_email.lower(), organizer_name)
 
         for attendee_email, attendee_name in attendees.items():
             lines.append(
