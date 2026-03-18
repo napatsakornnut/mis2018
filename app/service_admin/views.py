@@ -134,7 +134,7 @@ def walk_form_fields(field, quote_column_names, cols=set(), keys=[], values='', 
     else:
         clean_field_name = re.sub(r'_\d+$', '', field.name)
         if clean_field_name in quote_column_names:
-            if field.name != 'csrf_token' or field.name != 'submit':
+            if field.name not in ('csrf_token', 'submit'):
                 if isinstance(field.data, list):
                     for item in field.data:
                         keys.append((field.name, values + str(item)))
