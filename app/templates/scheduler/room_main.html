@@ -382,30 +382,36 @@
                     <div class="table-container">
                         <table class="table is-fullwidth" id="reservationTable">
                             <thead>
-                            <tr>
-                                <th>ห้อง</th>
-                                <th>กิจกรรม</th>
-                                <th>เวลา</th>
-                                <th>จองเมื่อ</th>
-                                <th></th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {% for event in recent_reservations %}
-                                <tr>
-                                    <td>{{ event.room }}</td>
-                                    <td>{{ event.title }}</td>
-                                    <td>{{ event.start|localdatetime }} - {{ event.end|localdatetime }}</td>
-                                    <td>{{ event.created_at|humanizedt }}</td>
-                                    <td>
-                                        <a class="button is-success is-light is-rounded"
-                                           href="{{ url_for('room.room_reserve', room_id=event.room_id) }}">
-                                            <span>จองห้องอีกครั้ง</span>
-                                        </a>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                            </tbody>
+                             <tr>
+                                 <th>ห้อง</th>
+                                 <th>กิจกรรม</th>
+                                 <th>เวลา</th>
+                                 <th>จองเมื่อ</th>
+                                 <th>สถานะ</th>
+                                 <th></th>
+                             </tr>
+                             </thead>
+                             <tbody>
+                             {% for event in recent_reservations %}
+                                 <tr>
+                                     <td>{{ event.room }}</td>
+                                     <td>{{ event.title }}</td>
+                                     <td>{{ event.start|localdatetime }} - {{ event.end|localdatetime }}</td>
+                                     <td>{{ event.created_at|humanizedt }}</td>
+                                     <td>
+                                         {% if event.cancelled_at %}
+                                             <span class="tag is-danger is-light">ยกเลิก</span>
+                                         {% endif %}
+                                     </td>
+                                     <td>
+                                         <a class="button is-info is-light is-rounded"
+                                            href="{{ url_for('room.room_reserve', room_id=event.room_id) }}">
+                                             <span>จองห้องอีกครั้ง</span>
+                                         </a>
+                                     </td>
+                                 </tr>
+                             {% endfor %}
+                             </tbody>
                         </table>
                     </div>
                 </div>
