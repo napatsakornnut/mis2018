@@ -2,7 +2,7 @@
 {% include "academic_services/customer_nav.html" %}
 {% block head %}
     {{ super() }}
-    <link rel="stylesheet" href="https://fastly.jsdelivr.net/npm/@sweetalert2/theme-bulma@5/bulma.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@sweetalert2/theme-bulma@5/bulma.css"/>
 {% endblock %}
 {% block page_content %}
     <section class="section">
@@ -68,22 +68,12 @@
                                         </div>
                                     </div>
                                     <div class="content">
-                                        {% if current_user.verify_datetime %}
-                                            <a href="{{ url_for('academic_services.create_request', code=sub_lab.code,
+                                        <a href="{{ url_for('academic_services.create_request', code=sub_lab.code,
                                                 menu='request') }}"
                                                class="button is-success is-rounded"
                                             >
                                                 เริ่มกรอกฟอร์ม
-                                            </a>
-                                        {% elif current_user.verify_datetime == None %}
-                                            <a id="Warn" class="button is-success is-rounded">เริ่มกรอกฟอร์ม</a>
-                                        {% else %}
-                                            <a href="{{ url_for('academic_services.login') }}"
-                                               class="button is-success is-rounded"
-                                            >
-                                                เริ่มกรอกฟอร์ม
-                                            </a>
-                                        {% endif %}
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -164,7 +154,7 @@
 {% endblock %}
 {% block scripts %}
     {{ super() }}
-    <script src="//fastly.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         $(document).ready(() => {
             $('#Warn').click(() => {

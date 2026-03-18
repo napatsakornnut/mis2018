@@ -3,7 +3,7 @@
 {% include "service_admin/admin_nav.html" %}
 {% block head %}
     {{ super() }}
-    <link href="https://fastly.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 {% endblock %}
 {% block page_content %}
     <section class="section">
@@ -146,6 +146,14 @@
                                     </div>
                                 </div>
                             {% endfor %}
+{#                            <label>#}
+{#                                <input id="verify_email" type="checkbox" name="verify_email" value="verify_email"#}
+{#                                        {% if account and account.verify_datetime or not customer_id %}#}
+{#                                            checked#}
+{#                                        {% endif %}#}
+{#                                >#}
+{#                                    Verify email#}
+{#                            </label>#}
                         </div>
                     </div>
                     <div class="field is-grouped is-grouped-centered">
@@ -163,7 +171,7 @@
 {% endblock page_content %}
 {% block scripts %}
     {{ super() }}
-    <script src="https://fastly.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(() => {
             $('.js-example-basic-single').select2({

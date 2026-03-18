@@ -280,6 +280,11 @@ def show_leave_info():
     cum_days = defaultdict(float)
     quota_days = defaultdict(float)
     pending_days = defaultdict(float)
+    approved_request_counts = {
+        'ลากิจ': 0,
+        'ลาป่วย': 0,
+        'ลาพักร้อน': 0,
+    }
     for req in current_user.leave_requests:
         used_quota = current_user.personal_info.get_total_leaves(req.quota.id,
                                                                  tz.localize(START_FISCAL_DATE),
@@ -289,6 +294,12 @@ def show_leave_info():
         pending_day = current_user.personal_info.get_total_pending_leaves_request \
             (req.quota.id, tz.localize(START_FISCAL_DATE), tz.localize(END_FISCAL_DATE))
         pending_days[leave_type] = pending_day
+        if (req.start_datetime and tz.localize(START_FISCAL_DATE) <= req.start_datetime <= tz.localize(END_FISCAL_DATE)
+                and not req.cancelled_at and any(approval.is_approved for approval in req.approvals)):
+            if leave_type in ('ลากิจ', 'ลาป่วย'):
+                approved_request_counts[leave_type] += 1
+            elif leave_type == 'ลาพักผ่อน':
+                approved_request_counts['ลาพักร้อน'] += 1
     for quota in current_user.personal_info.employment.quota:
         quota_limit = calculate_leave_quota_limit(current_user.id, quota.id, datetime.today())
         can_request = quota.leave_type.requester_self_added
@@ -300,6 +311,7 @@ def show_leave_info():
                            line_profile=session.get('line_profile'),
                            cum_days=cum_days,
                            pending_days=pending_days,
+                           approved_request_counts=approved_request_counts,
                            quota_days=quota_days,
                            is_approver=is_approver, approvers=approvers)
 
@@ -2196,6 +2208,14 @@ def login_scan():
                 activity = 'checked out'
             db.session.add(record)
             db.session.commit()
+            try:
+                if activity == 'checked in':
+                    msg = f'ท่านได้ทำแสกนเข้างานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
+                else:
+                    msg = f'ท่านได้ทำแสกนออกงานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
+                line_bot_api.push_message(to=person.staff_account.line_id, messages=TextSendMessage(text=msg))
+            except LineBotApiError:
+                pass
             return jsonify(
                 {'message': 'success', 'activity': activity, 'name': person.fullname, 'time': now.isoformat(),
                  'numScans': num_scans})
@@ -2384,6 +2404,12 @@ def login_scan_gj():
                 num_scans=1,
                 qrcode_in_exp_datetime=qrcode_exp_datetime.astimezone(pytz.utc)
             )
+            try:
+                msg = f'ท่านได้ทำแสกนเข้า/ออกงานล่าสุดเมื่อ {now.strftime("%d/%m/%Y %H:%M:%S")}'
+                line_bot_api.push_message(to=person.staff_account.line_id,
+                                          messages=TextSendMessage(text=msg))
+            except LineBotApiError:
+                pass
             db.session.add(record)
             db.session.commit()
             return jsonify({'message': 'success',
@@ -4758,15 +4784,18 @@ def get_all_employees():
     search_term = request.args.get('term', '')
     key = request.args.get('key', 'id')
     group = request.args.get('group')
+    include_exemployees = request.args.get('include_exemployees', '').lower() in ('1', 'true', 'yes')
     results = []
     query = StaffPersonalInfo.query
     if group == 'academic':
         query = query.filter_by(academic_staff=True)
-    query = query.filter(StaffPersonalInfo.retirement_date == None) \
-        .filter(StaffPersonalInfo.resignation_date == None)
+
+    if not include_exemployees:
+        query = query.filter(StaffPersonalInfo.retirement_date == None).\
+            filter(StaffPersonalInfo.resignation_date == None).\
+            filter(or_(StaffPersonalInfo.retired==False, StaffPersonalInfo.retired.is_(None)))
     for staff in query:
-        if (search_term in staff.fullname or search_term in staff.staff_account.email) \
-                and staff.retired is not True:
+        if (search_term in staff.fullname) or (search_term in staff.staff_account.email):
             index_ = getattr(staff, key) if hasattr(staff, key) else getattr(staff.staff_account, key)
             results.append({
                 "id": index_,
@@ -4890,6 +4919,16 @@ def geo_checkin():
                 activity = 'checked out'
         db.session.add(record)
         db.session.commit()
+        try:
+            if activity == 'checked in':
+                msg = f'ท่านได้ทำแสกนเข้างานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
+            elif activity == 'checked out':
+                msg = f'ท่านได้ทำแสกนออกงานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
+            else:
+                msg = f'ท่านได้ทำแสกนเข้า/ออกงานล่าสุดเมื่อ {now.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")}'
+            line_bot_api.push_message(to=current_user.line_id, messages=TextSendMessage(text=msg))
+        except LineBotApiError:
+            pass
         return jsonify({'message': 'success',
                         'activity': activity,
                         'name': current_user.fullname,

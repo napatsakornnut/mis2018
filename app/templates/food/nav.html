@@ -1,47 +1,27 @@
-<section class="hero is-info is-bold">
-   <div class="hero-head">
-      <nav class="navbar">
-         <div class="container">
-            <div class="navbar-brand">
-              <a class="navbar-item" href="/">
-                <span class="icon is-large">
-                  <i class="fa fa-home fa-3x"></i>
-                </span>
-              </a>
-              <a class="navbar-item" href="{{ url_for('food.index') }}">
-                หน้าหลัก
-              </a>
-               <span class="navbar-burger burger" data-target="navbarMenuHeroA">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </span>
-            </div>
-            <div id="navbarMenuHeroA" class="navbar-menu">
-               <div class="navbar-end">
-                  <a class="navbar-item" href="{{ url_for('food.index') }}">
-                      รายการแปลงเกษตร
-                  </a>
-                  <a class="navbar-item" href="{{ url_for('food.list_produce') }}">
-                      รายการผักและผลไม้
-                  </a>
-                   <a class="navbar-item" href="">
-                       ผลการทดสอบ
-                   </a>
-                   <a class="navbar-item">
-                       <span class="icon is-medium">
-                           <i class="fa fa-user-circle fa-2x"></i>
-                       </span>
-                   </a>
-               </div>
-            </div>
-         </div>
-      </nav>
-   </div>
-   <div class="hero-body">
-      <div class="container">
-          <h1 class="title">ระบบฐานข้อมูลโครงการเกษตรและอาหารปลอดภัย</h1>
-          <h1 class="subtitle">คณะเทคนิคการแพทย์ มหาวิทยาลัยมหิดล</h1>
-      </div>
-   </div>
+{% from "components/module_nav.html" import render_module_nav %}
+
+<section class="hero is-light">
+    <div class="hero-head">
+        {{ render_module_nav(
+            title='Safe Food',
+            subtitle='ระบบฐานข้อมูลโครงการเกษตรและอาหารปลอดภัย',
+            brand_href='/',
+            start_links=[
+                {'href': url_for('food.index'), 'label': 'รายการแปลงเกษตร', 'icon': 'fas fa-seedling', 'primary': True},
+                {'href': url_for('food.list_produce'), 'label': 'รายการผักและผลไม้', 'icon': 'fas fa-apple-whole'}
+            ],
+            end_links=[
+                {'href': '', 'label': 'ผลการทดสอบ', 'icon': 'fas fa-flask'},
+                {'href': '#', 'label': 'ผู้ใช้', 'icon': 'fa fa-user-circle'}
+            ],
+            close_href=None,
+            menu_id='foodNavbarMenu'
+        ) }}
+    </div>
+    <div class="hero-body">
+        <div class="container">
+            <h1 class="title">ระบบฐานข้อมูลโครงการเกษตรและอาหารปลอดภัย</h1>
+            <h1 class="subtitle">คณะเทคนิคการแพทย์ มหาวิทยาลัยมหิดล</h1>
+        </div>
+    </div>
 </section>

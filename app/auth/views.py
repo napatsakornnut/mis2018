@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+import os
+import secrets
+from urllib.parse import urljoin
+
 from flask_admin.helpers import is_safe_url
 
 from . import authbp as auth
@@ -13,6 +17,7 @@ from app.staff.models import StaffAccount, StaffLeaveApprover
 from .forms import LoginForm, ForgotPasswordForm, ResetPasswordForm
 from itsdangerous.url_safe import URLSafeTimedSerializer as TimedJSONWebSignatureSerializer
 import requests
+from requests_oauthlib import OAuth2Session
 from linebot import (LineBotApi, WebhookHandler)
 
 LINE_CLIENT_ID = app.config['LINE_CLIENT_ID']
@@ -22,6 +27,29 @@ LINE_MESSAGE_API_CLIENT_SECRET = app.config['LINE_MESSAGE_API_CLIENT_SECRET']
 
 line_bot_api = LineBotApi(LINE_MESSAGE_API_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_MESSAGE_API_CLIENT_SECRET)
+
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid',
+]
+
+
+def _is_google_login_enabled():
+    return bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET'))
+
+
+def _google_redirect_uri():
+    return os.getenv('GOOGLE_REDIRECT_URI') or urljoin(request.host_url, '/auth/google/callback')
+
+
+def _google_oauth_session(state=None):
+    return OAuth2Session(
+        client_id=os.getenv('GOOGLE_CLIENT_ID'),
+        redirect_uri=_google_redirect_uri(),
+        scope=GOOGLE_SCOPES,
+        state=state,
+    )
 
 
 def send_mail(recp, title, message):
@@ -79,7 +107,11 @@ def login():
             flash(u'User does not exists. ไม่พบบัญชีผู้ใช้ในระบบ', 'danger')
             return redirect(url_for('auth.login'))
 
-    return render_template('/auth/login.html', form=form, errors=form.errors, linking_line=linking_line)
+    return render_template('/auth/login.html',
+                           form=form,
+                           errors=form.errors,
+                           linking_line=linking_line,
+                           google_login_enabled=_is_google_login_enabled())
 
 
 @auth.route('/account', methods=['GET', 'POST'])
@@ -177,6 +209,84 @@ def forgot_password():
                       u' โปรดตรวจสอบอีเมล mahidol.ac.th ของท่านเพื่อทำการแก้ไขรหัสผ่านภายใน 20 นาที', 'success')
             return redirect(url_for('auth.login'))
     return render_template('auth/forgot_password.html', form=form, errors=form.errors)
+
+
+@auth.route('/google/login')
+def google_login():
+    if not _is_google_login_enabled():
+        flash(u'Google sign-in is not configured yet.', 'warning')
+        return redirect(url_for('auth.login'))
+
+    next_url = request.args.get('next')
+    if next_url and not is_safe_url(next_url):
+        return abort(400)
+
+    oauth = _google_oauth_session()
+    authorization_base_url = 'https://accounts.google.com/o/oauth2/v2/auth'
+    state = secrets.token_urlsafe(16)
+    session['auth_google_oauth_state'] = state
+    if next_url:
+        session['auth_google_oauth_next'] = next_url
+    authorization_url, _ = oauth.authorization_url(
+        authorization_base_url,
+        state=state,
+        hd='mahidol.ac.th',
+        prompt='select_account',
+    )
+    return redirect(authorization_url)
+
+
+@auth.route('/google/callback')
+def google_callback():
+    if not _is_google_login_enabled():
+        flash(u'Google sign-in is not configured yet.', 'warning')
+        return redirect(url_for('auth.login'))
+
+    expected_state = session.pop('auth_google_oauth_state', None)
+    next_url = session.pop('auth_google_oauth_next', None)
+    state = request.args.get('state')
+    if not state or state != expected_state:
+        flash(u'Invalid Google sign-in state. Please try again.', 'danger')
+        return redirect(url_for('auth.login'))
+
+    oauth = _google_oauth_session(state=state)
+    try:
+        oauth.fetch_token(
+            token_url='https://oauth2.googleapis.com/token',
+            client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
+            authorization_response=request.url,
+        )
+        resp = oauth.get('https://www.googleapis.com/oauth2/v3/userinfo')
+        resp.raise_for_status()
+        profile = resp.json()
+    except Exception as exc:
+        current_app.logger.exception('Google sign-in failed during OAuth callback.')
+        if current_app.debug:
+            flash(u'Google sign-in failed: {}'.format(exc), 'danger')
+        else:
+            flash(u'Google sign-in failed. Please try again.', 'danger')
+        return redirect(url_for('auth.login'))
+
+    email = (profile.get('email') or '').strip().lower()
+    if not email.endswith('@mahidol.ac.th'):
+        flash(u'Please use your Mahidol Google account (@mahidol.ac.th).', 'danger')
+        return redirect(url_for('auth.login'))
+
+    email_local = email.split('@')[0]
+    user = StaffAccount.query.filter_by(email=email_local).first()
+    if not user:
+        user = StaffAccount.query.filter_by(email=email).first()
+    if not user:
+        flash(u'User does not exists. ไม่พบบัญชีผู้ใช้ในระบบ', 'danger')
+        return redirect(url_for('auth.login'))
+
+    login_user(user, True)
+    identity_changed.send(current_app._get_current_object(), identity=Identity(user.id))
+    flash(u'You have just logged in with Google. ลงทะเบียนเข้าใช้งานเรียบร้อย', 'success')
+
+    if next_url and not is_safe_url(next_url):
+        return abort(400)
+    return redirect(next_url or url_for('index'))
 
 
 @auth.route('/line')

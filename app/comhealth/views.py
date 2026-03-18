@@ -1,50 +1,94 @@
 # -*- coding: utf-8 -*-
+import datetime
+import hashlib
 import io
 import json
 import os
-import datetime
+import re
+import secrets
 from collections import OrderedDict, defaultdict
 from io import BytesIO
+from urllib.parse import urljoin
 
-import arrow
 import pandas as pd
-from flask_cors import cross_origin
-from flask_mail import Message
-from flask_wtf.csrf import generate_csrf
-from pandas import read_excel, isna
+import requests
 from bahttext import bahttext
-from decimal import Decimal
-
-from sqlalchemy import or_, case
-from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy.sql import and_
 from flask import (render_template, flash, redirect,
                    url_for, session, request, send_file,
-                   send_from_directory, jsonify, make_response)
+                   send_from_directory, make_response, current_app)
 from flask_admin import BaseView, expose
+from flask_cors import cross_origin
 from flask_login import login_required, current_user
+from flask_mail import Message
+from flask_wtf.csrf import generate_csrf
+from itsdangerous.url_safe import URLSafeTimedSerializer as TimedJSONWebSignatureSerializer
+from markupsafe import escape
+from pandas import read_excel, isna
+from requests_oauthlib import OAuth2Session
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER
-from reportlab.lib.utils import ImageReader
-from reportlab.platypus import (SimpleDocTemplate, Table, Image,
-                                Spacer, Paragraph, TableStyle, PageBreak, KeepTogether)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+from reportlab.platypus import (SimpleDocTemplate, Table, Image,
+                                Spacer, Paragraph, TableStyle, PageBreak, KeepTogether)
+from sqlalchemy import or_, case
+from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.sql import and_
 
-from . import comhealth
+from app.main import mail
+from .apis import *
 from .forms import (ServiceForm, TestProfileForm, TestListForm,
                     TestForm, TestGroupForm, CustomerForm, PasswordOfSignDigitalForm, SendMailToCustomerForm,
                     CustomerInfoForm)
 from .models import *
-from app.main import cors, mail
 from ..e_sign_api import e_sign
 
 bangkok = pytz.timezone('Asia/Bangkok')
 
 ALLOWED_EXTENSIONS = ['xlsx', 'xls']
+
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid',
+]
+
+
+def _is_google_verification_enabled():
+    return bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET'))
+
+
+def _google_online_results_redirect_uri():
+    return os.getenv('GOOGLE_COMHEALTH_RESULTS_REDIRECT_URI') or urljoin(
+        request.host_url, '/comhealth/online-results/mahidol/google/callback'
+    )
+
+
+def _google_online_results_oauth_session(state=None):
+    return OAuth2Session(
+        client_id=os.getenv('GOOGLE_CLIENT_ID'),
+        redirect_uri=_google_online_results_redirect_uri(),
+        scope=GOOGLE_SCOPES,
+        state=state,
+    )
+
+
+def _has_online_results_access():
+    return current_user.is_authenticated or bool(session.get('comhealth_online_results_email'))
+
+
+def _require_online_results_access():
+    if _has_online_results_access():
+        return None
+    flash(
+        'Please verify your email access before viewing online results. / กรุณายืนยันสิทธิ์อีเมลก่อนดูผลตรวจออนไลน์',
+        'warning'
+    )
+    return redirect(url_for('comhealth.landing'))
 
 
 @comhealth.route('/api/v1/lineids/<lineid>')
@@ -61,7 +105,6 @@ def get_line_id(lineid):
 
 
 @comhealth.route('/')
-@login_required
 def landing():
     return render_template('comhealth/landing.html')
 
@@ -74,6 +117,384 @@ def finance_landing():
         session['receipt_venue'] = venue
         return redirect(url_for('comhealth.finance_index'))
     return render_template('comhealth/finance_landing.html')
+
+
+@comhealth.route('/email-registration')
+@login_required
+def email_registration_landing():
+    return render_template('comhealth/email_registration_landing.html')
+
+
+@comhealth.route('/email-registration/mahidol-staff')
+@login_required
+def email_registration_mahidol_staff():
+    return render_template('comhealth/email_registration_mahidol_staff.html')
+
+
+@comhealth.route('/email-registration/general-public')
+@login_required
+def email_registration_general_public():
+    return render_template('comhealth/email_registration_general_public.html')
+
+
+@comhealth.route('/email-registration/mahidol-staff/search')
+@login_required
+def search_email_registration_mahidol_staff():
+    query_text = request.args.get('query', '').strip()
+    customers = []
+    if query_text:
+        query = ComHealthCustomer.query
+        name_parts = [part for part in query_text.split() if part]
+
+        if len(name_parts) >= 2:
+            firstname_part = name_parts[0]
+            lastname_part = ' '.join(name_parts[1:])
+            query = query.filter(or_(
+                and_(
+                    ComHealthCustomer.firstname.contains(firstname_part),
+                    ComHealthCustomer.lastname.contains(lastname_part)
+                ),
+                and_(
+                    ComHealthCustomer.firstname.contains(lastname_part),
+                    ComHealthCustomer.lastname.contains(firstname_part)
+                )
+            ))
+        else:
+            query = query.filter(or_(
+                ComHealthCustomer.firstname.contains(query_text),
+                ComHealthCustomer.lastname.contains(query_text)
+            ))
+
+        customers = (
+            query
+            .order_by(ComHealthCustomer.firstname.asc(), ComHealthCustomer.lastname.asc())
+            .limit(50)
+            .all()
+        )
+    return render_template(
+        'comhealth/partials/email_registration_customer_list.html',
+        customers=customers,
+        query_text=query_text,
+        mode='mahidol'
+    )
+
+
+@comhealth.route('/email-registration/general-public/search')
+@login_required
+def search_email_registration_general_public():
+    query_text = request.args.get('query', '').strip()
+    customers = []
+    if query_text:
+        query = ComHealthCustomer.query
+        name_parts = [part for part in query_text.split() if part]
+
+        if len(name_parts) >= 2:
+            firstname_part = name_parts[0]
+            lastname_part = ' '.join(name_parts[1:])
+            query = query.filter(or_(
+                and_(
+                    ComHealthCustomer.firstname.contains(firstname_part),
+                    ComHealthCustomer.lastname.contains(lastname_part)
+                ),
+                and_(
+                    ComHealthCustomer.firstname.contains(lastname_part),
+                    ComHealthCustomer.lastname.contains(firstname_part)
+                )
+            ))
+        else:
+            query = query.filter(or_(
+                ComHealthCustomer.firstname.contains(query_text),
+                ComHealthCustomer.lastname.contains(query_text)
+            ))
+
+        customers = (
+            query
+            .order_by(ComHealthCustomer.firstname.asc(), ComHealthCustomer.lastname.asc())
+            .limit(50)
+            .all()
+        )
+    return render_template(
+        'comhealth/partials/email_registration_customer_list.html',
+        customers=customers,
+        query_text=query_text,
+        mode='public'
+    )
+
+
+@comhealth.route('/email-registration/customers/<int:customer_id>/edit-email-modal')
+@login_required
+def edit_email_registration_customer_modal(customer_id):
+    customer = ComHealthCustomer.query.get_or_404(customer_id)
+    form = SendMailToCustomerForm()
+    form.email.data = customer.email
+    mode = request.args.get('mode', 'public')
+    return render_template(
+        'comhealth/modals/edit_email_registration_customer_modal.html',
+        form=form,
+        customer=customer,
+        mode=mode
+    )
+
+
+@comhealth.route('/email-registration/customers/<int:customer_id>/qr-access-modal')
+@login_required
+def email_registration_qr_access_modal(customer_id):
+    customer = ComHealthCustomer.query.get_or_404(customer_id)
+    mode = request.args.get('mode', 'public')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+    token = serializer.dumps({
+        'customer_id': customer.id,
+        'mode': mode,
+    })
+    access_url = url_for(
+        'comhealth.email_registration_access_form',
+        token=token,
+        _external=True
+    )
+    return render_template(
+        'comhealth/modals/email_registration_qr_modal.html',
+        customer=customer,
+        mode=mode,
+        access_url=access_url
+    )
+
+
+@comhealth.route('/email-registration/access')
+def email_registration_access_form():
+    token = request.args.get('token')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+    try:
+        token_data = serializer.loads(token, max_age=300)
+        customer_id = token_data.get('customer_id')
+        mode = token_data.get('mode', 'public')
+        customer = ComHealthCustomer.query.get_or_404(customer_id)
+    except Exception:
+        return render_template(
+            'comhealth/email_registration_verification_result.html',
+            status='danger',
+            title='QR link expired / ลิงก์ QR หมดอายุ',
+            message=(
+                'This QR link is invalid or has expired. Please ask staff to generate a new QR code.\n'
+                'ลิงก์ QR นี้ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาให้เจ้าหน้าที่สร้าง QR code ใหม่'
+            )
+        ), 400
+
+    form = SendMailToCustomerForm()
+    form.email.data = customer.email
+    return render_template(
+        'comhealth/email_registration_edit_form.html',
+        form=form,
+        customer=customer,
+        mode=mode,
+        access_token=token
+    )
+
+@comhealth.route('/online-results/mahidol/google')
+def online_results_mahidol_google_start():
+    if not _is_google_verification_enabled():
+        flash('Google sign-in is not configured yet. / ยังไม่ได้ตั้งค่า Google sign-in', 'warning')
+        return redirect(url_for('comhealth.landing'))
+
+    oauth = _google_online_results_oauth_session()
+    authorization_base_url = 'https://accounts.google.com/o/oauth2/v2/auth'
+    state = secrets.token_urlsafe(16)
+    session['comhealth_online_results_google_oauth_state'] = state
+    authorization_url, _ = oauth.authorization_url(
+        authorization_base_url,
+        state=state,
+        hd='mahidol.ac.th',
+        prompt='select_account',
+    )
+    return redirect(authorization_url)
+
+
+@comhealth.route('/online-results/mahidol/google/callback')
+def online_results_mahidol_google_callback():
+    if not _is_google_verification_enabled():
+        flash('Google sign-in is not configured yet. / ยังไม่ได้ตั้งค่า Google sign-in', 'warning')
+        return redirect(url_for('comhealth.landing'))
+
+    expected_state = session.pop('comhealth_online_results_google_oauth_state', None)
+    state = request.args.get('state')
+    if not state or state != expected_state:
+        flash(
+            'Invalid Google verification state. Please try again. / สถานะการยืนยัน Google ไม่ถูกต้อง กรุณาลองใหม่',
+            'danger'
+        )
+        return redirect(url_for('comhealth.landing'))
+
+    oauth = _google_online_results_oauth_session(state=state)
+    try:
+        oauth.fetch_token(
+            token_url='https://oauth2.googleapis.com/token',
+            client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
+            authorization_response=request.url,
+        )
+        resp = oauth.get('https://www.googleapis.com/oauth2/v3/userinfo')
+        resp.raise_for_status()
+        profile = resp.json()
+    except Exception as exc:
+        current_app.logger.exception('Online results Google verification failed during OAuth callback.')
+        if current_app.debug:
+            flash(
+                'Google verification failed: {} / การยืนยันด้วย Google ล้มเหลว'.format(exc),
+                'danger'
+            )
+        else:
+            flash(
+                'Google verification failed. Please try again. / การยืนยันด้วย Google ล้มเหลว กรุณาลองใหม่',
+                'danger'
+            )
+        return redirect(url_for('comhealth.landing'))
+
+    email = (profile.get('email') or '').strip().lower()
+    display_name = (profile.get('name') or email).strip()
+    email_verified = profile.get('email_verified')
+    if not email or not email.endswith('@mahidol.ac.th') or not email_verified:
+        flash(
+            'Please use a verified Mahidol Google account (@mahidol.ac.th). / กรุณาใช้บัญชี Google มหิดลที่ยืนยันแล้ว (@mahidol.ac.th)',
+            'danger'
+        )
+        return redirect(url_for('comhealth.landing'))
+
+    registered_customer = ComHealthCustomer.query.filter_by(email=email).first()
+    if not registered_customer:
+        flash(
+            'This email is not registered for any customer record. Please register your email first. / '
+            'อีเมลนี้ยังไม่ได้ลงทะเบียนในข้อมูลผู้รับบริการ กรุณาลงทะเบียนอีเมลก่อน',
+            'warning'
+        )
+        return redirect(url_for('comhealth.email_registration_landing'))
+
+    session['comhealth_online_results_email'] = email
+    session['comhealth_online_results_name'] = display_name
+    return redirect(url_for('comhealth.customers_result_list'))
+
+
+@comhealth.route('/email-registration/customers/<int:customer_id>/send-verification', methods=['POST'])
+def send_email_registration_verification(customer_id):
+    customer = ComHealthCustomer.query.get_or_404(customer_id)
+    form = SendMailToCustomerForm()
+    mode = request.form.get('mode', 'public')
+    access_token = request.form.get('access_token')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+
+    try:
+        token_data = serializer.loads(access_token, max_age=300)
+        if token_data.get('customer_id') != customer.id or token_data.get('mode', 'public') != mode:
+            raise ValueError('Invalid token payload')
+    except Exception:
+        return render_template(
+            'comhealth/email_registration_verification_result.html',
+            status='danger',
+            title='QR link expired / ลิงก์ QR หมดอายุ',
+            message=(
+                'This QR link is invalid or has expired. Please ask staff to generate a new QR code.\n'
+                'ลิงก์ QR นี้ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาให้เจ้าหน้าที่สร้าง QR code ใหม่'
+            )
+        ), 400
+
+    if not form.validate_on_submit():
+        return render_template(
+            'comhealth/email_registration_edit_form.html',
+            form=form,
+            customer=customer,
+            mode=mode,
+            access_token=access_token
+        ), 422
+
+    email = form.email.data.strip().lower()
+    if mode == 'mahidol' and not email.endswith('@mahidol.ac.th'):
+        form.email.errors.append('Please use a Mahidol email address (@mahidol.ac.th) / กรุณาใช้อีเมลมหิดล (@mahidol.ac.th)')
+        return render_template(
+            'comhealth/email_registration_edit_form.html',
+            form=form,
+            customer=customer,
+            mode=mode,
+            access_token=access_token
+        ), 422
+
+    email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()
+    token = serializer.dumps({
+        'customer_id': customer.id,
+        'email': email,
+        'email_hash': email_hash,
+    })
+    verify_url = url_for(
+        'comhealth.verify_email_registration_email',
+        token=token,
+        _external=True
+    )
+
+    title = 'Email Verification / ยืนยันอีเมล'
+    message = (
+        'Dear {},\n'
+        'A request was made to change your email in the Community Health system to: {}\n'
+        'Please verify this email by clicking the link below within 24 hours:\n'
+        '{}\n\n'
+        'If you did not request this change, please ignore this message.\n'
+        'Your email will not be changed until verification is completed.\n\n'
+        'เรียน {}\n'
+        'ระบบได้รับคำขอเปลี่ยนอีเมลของท่านในระบบงานบริการสุขภาพชุมชนเป็น: {}\n'
+        'กรุณายืนยันอีเมลโดยคลิกลิงก์ด้านล่างภายใน 24 ชั่วโมง:\n'
+        '{}\n\n'
+        'หากท่านไม่ได้เป็นผู้ร้องขอ กรุณาละเว้นอีเมลฉบับนี้\n'
+        'อีเมลของท่านจะยังไม่ถูกเปลี่ยนจนกว่าจะยืนยันสำเร็จ\n\n'
+        'This email was sent by an automated system. Please do not reply.\n'
+        'อีเมลนี้ส่งโดยระบบอัตโนมัติ กรุณาอย่าตอบกลับ'
+    ).format(
+        customer.fullname, email, verify_url,
+        customer.fullname, email, verify_url
+    )
+    send_mail([email], title, message)
+
+    return render_template('comhealth/email_registration_verification_result.html',
+                           status='success',
+                           title='Verification email sent / ส่งอีเมลยืนยันแล้ว',
+                           message=(
+                               'A verification link has been sent to {}. Please click the link within 24 hours to complete the email update.\n'
+                               'ระบบได้ส่งลิงก์ยืนยันไปที่ {} แล้ว กรุณาคลิกลิงก์ภายใน 24 ชั่วโมงเพื่ออัปเดตอีเมลให้เสร็จสมบูรณ์'
+                           ).format(email, email))
+
+
+@comhealth.route('/email-registration/verify')
+def verify_email_registration_email():
+    token = request.args.get('token')
+    serializer = TimedJSONWebSignatureSerializer(current_app.config.get('SECRET_KEY'))
+    status = 'danger'
+    title = 'Verification failed / การยืนยันไม่สำเร็จ'
+    message = (
+        'The verification link is invalid or has expired. '
+        'Please request a new verification email.\n'
+        'ลิงก์ยืนยันไม่ถูกต้องหรือหมดอายุแล้ว กรุณาส่งคำขอยืนยันอีเมลใหม่'
+    )
+    if token:
+        try:
+            token_data = serializer.loads(token, max_age=86400)
+            email = token_data.get('email', '').strip().lower()
+            email_hash = token_data.get('email_hash')
+            customer_id = token_data.get('customer_id')
+            expected_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()
+            customer = ComHealthCustomer.query.get(customer_id)
+            if customer and email_hash == expected_hash:
+                customer.email = email
+                db.session.add(customer)
+                db.session.commit()
+                status = 'success'
+                title = 'Email verified / ยืนยันอีเมลสำเร็จ'
+                message = (
+                    'Your email has been verified and saved successfully.\n'
+                    'ระบบได้ยืนยันและบันทึกอีเมลของท่านเรียบร้อยแล้ว'
+                )
+        except Exception:
+            pass
+
+    return render_template(
+        'comhealth/email_registration_verification_result.html',
+        status=status,
+        title=title,
+        message=message
+    )
 
 
 @comhealth.route('/services/finance')
@@ -268,6 +689,7 @@ def show_finance_records(service_id):
 @comhealth.route('/customers')
 @login_required
 def index():
+
     services = ComHealthService.query.all()
     services_data = []
     for sv in services:
@@ -2240,14 +2662,13 @@ def create_receipt(record_id):
         address = request.form.get('receipt_address', None)
         issued_for = request.form.get('issued_for', None)
         issuer = ComHealthCashier.query.filter_by(staff=current_user).first()
-        reason_text = record.finance_contact.reason or ""
+        reason_text = getattr(record.finance_contact, "reason", "") or ""
         if record.note:
             record.note = f"{record.note}:{reason_text}"
         else:
             # ถ้ายังไม่มี note เดิม ไม่ต้องขึ้นต้นด้วย :
             record.note = f"{reason_text}"
 
-        print("note",record.note)
         if not issuer:
             issuer = ComHealthCashier(staff=current_user,
                                       position=current_user.personal_info.position)
@@ -2476,12 +2897,7 @@ def generate_receipt_pdf(receipt, sign=False, cancel=False):
         style=style_sheet['ThaiStyle']) if sign else ""
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer,
-                            rightMargin=10,
-                            leftMargin=10,
-                            topMargin=180,
-                            bottomMargin=10,
-                            )
+
     receipt_number = receipt.code
     data = []
     affiliation = '''<para align=center><font size=10>
@@ -2534,34 +2950,48 @@ def generate_receipt_pdf(receipt, sign=False, cancel=False):
     if cancel:
         origin_or_copy = Paragraph('<para align=center><font size=20>ยกเลิก(Cancel)<br/><br/></font></para>',
                                    style=style_sheet['ThaiStyle'])
-    hight_customer_name = 5.5
+    customer_br = ''
     if receipt.issued_for:
-
-        customer_name = '''<para><font size=12>
-        ได้รับเงินจาก / RECEIVED FROM {issued_for} ({customer_name})<br/>
-        ที่อยู่ / ADDRESS {address} <br/>
+        customer_name = '''
+        <para><font size=12>
+        ได้รับเงินจาก / RECEIVED FROM {issued_for}<br/>
+        ที่อยู่ / ADDRESS {address}
         </font></para>
-        '''.format(issued_for=receipt.issued_for,
-                   customer_name=receipt.record.customer.fullname,
-                   address=receipt.address,
-                   )
+        '''.format(
+            issued_for=receipt.issued_for,
+            address=receipt.address
+        )
     else:
-        customer_name = '''<para><font size=12>
+        customer_br = '<br/>'
+        customer_name = '''<para><font size=12><br/>
         ได้รับเงินจาก / RECEIVED FROM {customer_name}
         </font></para>
         '''.format(customer_name=receipt.record.customer.fullname,
                    )
-    customer_labno = '''<para><font size=11>
-    หมายเลขรายการ / NUMBER {customer_labno}<br/><br/>
+    customer_labno = '''
+    <para align=right><font size=11>{customer_br}
+    หมายเลขรายการ / NUMBER {customer_labno}
     </font></para>
     '''.format(customer_labno=receipt.record.labno,
-               venue=receipt.issued_at)
+               venue=receipt.issued_at,customer_br=customer_br)
     customer = Table([[Paragraph(customer_name, style=style_sheet['ThaiStyle']),
                        Paragraph(customer_labno, style=style_sheet['ThaiStyle'])]],
-                     colWidths=[300, 200]
+                     colWidths=[360, 140]
                      )
     customer.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                                 ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+
+    w, h = customer.wrap(500, 100)
+    top_margin = 180 + (h * 0.5)
+
+    doc = SimpleDocTemplate(
+        buffer,
+        rightMargin=10,
+        leftMargin=10,
+        topMargin=top_margin,
+        bottomMargin=10,
+    )
+
     items = [[Paragraph('<font size=10>ลำดับ / No.</font>', style=style_sheet['ThaiStyleCenter']),
               Paragraph('<font size=10>รายการ / Description</font>', style=style_sheet['ThaiStyleCenter']),
               Paragraph('<font size=10>เบิกได้ (บาท)*<br/>Reimbursable (BAHT)</font>',
@@ -2792,11 +3222,11 @@ def generate_receipt_pdf(receipt, sign=False, cancel=False):
         subheader1 = Paragraph('<para align=center><font size=16>ใบเสร็จรับเงิน / RECEIPT<br/><br/></font></para>',
                                style=style_sheet['ThaiStyle'])
         w, h = subheader1.wrap(doc.width, doc.topMargin)
-        subheader1.drawOn(canvas, doc.leftMargin, doc.height + doc.topMargin - h * 5.5)
+        subheader1.drawOn(canvas, doc.leftMargin, doc.height + doc.topMargin - h * 5)
 
         subheader2 = customer
         w, h = subheader2.wrap(doc.width, doc.topMargin)
-        subheader2.drawOn(canvas, doc.leftMargin + 28, doc.height + doc.topMargin - h * hight_customer_name)
+        subheader2.drawOn(canvas, doc.leftMargin + 28, doc.height + doc.topMargin - h - 120)
 
         logo_image = ImageReader('app/static/img/mu-watermark.png')
         canvas.drawImage(logo_image, 140, 265, mask='auto')
@@ -3091,3 +3521,900 @@ def receipt_list():
     if request.headers.get('HX-Request') == 'true':
         return render_template('comhealth/receipt_list.html', receipt_detail=receipt_detail)
     return render_template('comhealth/receipt_list.html', receipt_detail=receipt_detail)
+
+
+@comhealth.route('/list/servicedate')
+def customers_result_list():
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+
+    if current_user.is_authenticated:
+        email = current_user.email
+        if email and '@' not in email:
+            email = f'{email}@mahidol.ac.th'
+        display_name = current_user.fullname
+    else:
+        email = session.get('comhealth_online_results_email')
+        display_name = session.get('comhealth_online_results_name', email)
+
+    return render_template('comhealth/customers_result_list.html', email=email, display_name=display_name)
+
+
+@comhealth.route('/api/cmslis/<email>')
+def cmslis_email(email):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+
+    if not current_user.is_authenticated:
+        session_email = session.get('comhealth_online_results_email', '').strip().lower()
+        if email.strip().lower() != session_email:
+            return '<tr><td colspan="2" class="has-text-centered">Unauthorized</td></tr>', 403
+
+    api_employee_url = f"https://webmt.mahidol.ac.th/api/Employees/email/{email}"
+    response_employee = requests.get(api_employee_url)
+
+    if response_employee.status_code != 200:
+        return '<tr><td colspan="2" class="has-text-centered">ไม่พบข้อมูล</td></tr>'
+
+    employee = response_employee.json()
+
+    employee_dob = employee.get("birthDate")
+
+    cmscode = employee.get("cmsCode")
+    if not cmscode:
+        return '<tr><td colspan="2" class="has-text-centered">ไม่พบข้อมูล</td></tr>'
+
+
+    # service วันที่ตรวจ
+    api_services_url = f"http://webmt.mahidol.ac.th/api/Employees/{cmscode}/services"
+    response_services = requests.get(api_services_url)
+    services = response_services.json()
+
+    html = ""
+    data = services.get("data", [])
+
+    if not data:
+        return '<tr><td colspan="2" class="has-text-centered">ไม่พบข้อมูล</td></tr>'
+
+
+    for row in data:
+        servicedate = row.get("currentDate")
+        dt = datetime.fromisoformat(servicedate)
+        servicedate_thai = dt.strftime("%d/%m/") + str(dt.year + 543)
+
+        serviceno = row.get("serviceNo")
+
+        #อายุตามวันที่ตรวจ
+        if not employee_dob:
+            age = "No birth date"
+        else:
+            birth_date = datetime.strptime(employee_dob, "%Y-%m-%dT%H:%M:%S").date()
+            service_date = datetime.strptime(servicedate, "%Y-%m-%dT%H:%M:%S").date()
+            age = service_date.year - birth_date.year - (
+                    (service_date.month, service_date.day) < (birth_date.month, birth_date.day)
+            )
+
+        result_url = url_for(
+            'comhealth.customer_result',
+            serviceNo=serviceno,
+            email=email,
+            servicedate=servicedate,
+            age=age
+        )
+
+        html += f"""
+        <tr>
+            <td class="is-vcentered">
+                <div class="has-text-weight-bold">{servicedate_thai}</div>
+            </td>
+            <td class="has-text-centered is-vcentered">
+                <a href="{result_url}" class="button btn-view is-small is-rounded">
+                    <span class="icon"><i class="fas fa-search"></i></span>
+                    <span>ดูผลตรวจ</span>
+                </a>
+            </td>
+        </tr>
+        """
+
+    return html
+
+
+INTERPRET_CACHE = {}
+def load_all_interpret():
+    global INTERPRET_CACHE
+
+    if INTERPRET_CACHE:
+        return INTERPRET_CACHE  # ถ้าโหลดแล้ว ไม่ต้องโหลดซ้ำ
+
+    url = "https://webmt.mahidol.ac.th/api/ConditionInterprets"
+    response = requests.get(url, timeout=10)
+    data = response.json()["data"]
+
+    INTERPRET_CACHE = {
+        item["condiInterpretId"]: item
+        for item in data
+    }
+
+    return INTERPRET_CACHE
+
+CONDITION_CACHE = {}
+def load_all_conditions():
+    global CONDITION_CACHE
+
+    if CONDITION_CACHE:
+        return CONDITION_CACHE  # โหลดแล้วไม่ต้องโหลดซ้ำ
+
+    url = "https://webmt.mahidol.ac.th/api/Conditions"
+    response = requests.get(url, timeout=10)
+    data = response.json()
+
+    grouped = defaultdict(list)
+
+    for item in data:
+        subject = item.get("subject")
+        grouped[subject].append(item)
+
+    CONDITION_CACHE = dict(grouped)
+    return CONDITION_CACHE
+
+mapping_color_inp = {
+        "Nm": ("has-text-dark"),
+        "AbH": ("has-text-danger")
+    }
+
+@comhealth.route('/result/<int:serviceNo>/<string:email>/<string:servicedate>')
+@comhealth.route('/result/<int:serviceNo>/<string:email>/<string:servicedate>/<string:age>')
+def customer_result(serviceNo, email, servicedate, age=None):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+
+    if not current_user.is_authenticated:
+        session_email = session.get('comhealth_online_results_email', '').strip().lower()
+        if email.strip().lower() != session_email:
+            flash(
+                'Unauthorized online result access. / ไม่มีสิทธิ์เข้าถึงผลตรวจนี้',
+                'danger'
+            )
+            return redirect(url_for('comhealth.customers_result_list'))
+    api_employee_url = f"https://webmt.mahidol.ac.th/api/Employees/email/{email}"
+    response_employee = requests.get(api_employee_url)
+    employee = response_employee.json()
+
+    dt = datetime.fromisoformat(servicedate)
+    servicedate_thai = dt.strftime("%d/%m/") + str(dt.year + 543)
+
+    load_all_interpret()
+
+    return render_template(
+        'comhealth/result.html',
+        employee=employee,
+        servicedate_thai=servicedate_thai,
+        service_no=serviceNo,
+        age=age
+    )
+
+@comhealth.route('/api/physical/<int:serviceNo>')
+def employee_physical(serviceNo):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+    'phyical น้ำหนัก ส่วนสูง'
+    api_physical_url = f"http://webmt.mahidol.ac.th/api/PhysicalExams/{serviceNo}"
+    try:
+        reponse_physical = requests.get(api_physical_url)
+        physical = reponse_physical.json()
+    except:
+        return '<tr><td colspan="4">Error loading data</td></tr>'
+
+    api_waist_url = f"https://webmt.mahidol.ac.th/api/Questionares/waistline/{serviceNo}"
+    try:
+        reponse_waist = requests.get(api_waist_url)
+        question = reponse_waist.json()
+    except:
+        return '<tr><td colspan="4">Error loading data</td></tr>'
+
+    weight = physical.get("weight","")
+    height = physical.get("height","")
+    heartrate = physical.get("heartRate","")
+    systolic = physical.get("systolic","")
+    comment = physical.get("comment","")
+    waistline  = question.get("waistline","")
+    if not waistline:
+        waistline = '-'
+
+    interpret_cache = load_all_interpret()
+    condition_cache = load_all_conditions()
+
+    def calculate_bmi(weight_kg, height_cm):
+        try:
+            weight_kg = float(weight_kg)
+            height_cm = float(height_cm)
+
+            if height_cm == 0:
+                return None
+
+            height_m = height_cm / 100
+            bmi = weight_kg / (height_m ** 2)
+
+            return round(bmi, 1)
+        except (TypeError, ValueError):
+            return None
+
+    bmi = calculate_bmi(weight, height)
+
+    if bmi is not None:
+        bmi_condi = match_condition(bmi, 0, 0, condition_cache.get("BMI"))
+        bmi_inp_id = interpret_cache.get(bmi_condi.get('condiInterpretId',""))
+        bmi_adv = bmi_inp_id.get('advise',"")
+        bmi_isnormal = bmi_inp_id.get('autoVal', "")
+        color_bmi_inp = mapping_color_inp.get(bmi_isnormal, ("has-text-warning"))
+    else:
+        bmi = '-'
+        bmi_inp = ''
+        bmi_adv = ''
+        color_bmi_inp = 'has-text-dark'
+
+    #systolic
+    if systolic != '':
+        bp_condi = get_bp_interpret_id(systolic, condition_cache.get('Systolic'))
+        bp_inp_id = interpret_cache.get(bp_condi)
+        bp_inp = bp_inp_id.get('interpret',"")
+        bp_isnormal = bp_inp_id.get('autoVal',"")
+        color_bp_inp = mapping_color_inp.get(bp_isnormal, ("has-text-warning"))
+    else:
+        color_bp_inp = 'has-text-dark'
+        bp_inp = ''
+
+    return (
+        f'<span id="weight" hx-swap-oob="true">{weight}</span>'
+        f'<span id="height" hx-swap-oob="true">{height}</span>'
+        f'<span id="heartrate" hx-swap-oob="true">{heartrate}</span>'
+        f'<span id="systolic" hx-swap-oob="true" class="{color_bp_inp}">{systolic}</span>'
+        f'<span id="waistline" hx-swap-oob="true">{waistline}</span>'
+        f'<span id="bmi" hx-swap-oob="true" class="{color_bmi_inp}">{bmi}</span>'
+        f'<span id="bmi_inp" hx-swap-oob="true" class={color_bmi_inp}>{bmi_adv}</span>'
+        f'<span id="comment" hx-swap-oob="true">{comment}</span>'
+        f'<span id="bp_inp" hx-swap-oob="true" class="{color_bp_inp}">{bp_inp}</span>'
+    )
+
+
+@comhealth.route('/api/lab/<int:serviceNo>/<int:age>/<gender>')
+def employee_lab(serviceNo, age, gender):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+
+    api_lab_url = f"https://webmt.mahidol.ac.th/api/Labs/service/testsummary/{serviceNo}"
+    try:
+        response = requests.get(api_lab_url)
+        lab = response.json()
+    except:
+        return '<tr><td colspan="4">Error loading data</td></tr>'
+
+    html = ""
+    condition_cache = load_all_conditions()
+    interpret_cache = load_all_interpret()
+    results_dict = {}
+
+    for row in lab.get("data", []):
+        if row.get("testNormalBook") == True and row.get("isProfile") == False:
+            tcode = row.get("tcode")
+            testname = escape(row.get("testNamePrintResult"))
+            value = escape(row.get("testResult"))
+            ref = escape(row.get("refBookTh"))
+            unit = row.get("unit")
+
+            if tcode == "LDL2":
+                tcode_oob = "LDL"
+            elif tcode == "LDLD":
+                tcode_oob = "LDL"
+            else:
+                tcode_oob = tcode
+
+            try:
+                condi = match_condition(value, age, gender, condition_cache.get(tcode))
+                inp_id = interpret_cache.get(condi.get('condiInterpretId', ""))
+                isnormal = inp_id.get('autoVal', "")
+                color_inp = mapping_color_inp.get(isnormal, ("has-text-warning"))
+            except:
+                condi = None
+                color_inp = 'has-text-dark'
+
+            results_dict[tcode] = {
+                "testname": testname,
+                "value": value
+            }
+
+            html += render_lab_oob(
+                tcode=tcode_oob,
+                value=value,
+                ref=ref,
+                testname=testname,
+                unit=unit,
+                color=color_inp
+            )
+    html += interpert_normaltest(lab,age,gender)
+    html += xray_result(serviceNo)
+    html += f'<div id="loader-overlay" class="hidden" hx-swap-oob="true"></div>'
+
+    return html
+
+
+def interpert_normaltest(lab,age,gender):
+    TARGET_TCODES = [
+        "GTT2","BUN","CRE","UA","CHO","HDLC","LDL2","TG","LDLD",
+        "AST","ALT","ALK",
+        "CBC10","CBC11","CBC08","CBC01","CBC02","CBC03","CBC04","CBC05","CBC06",
+        "UA05","UA06","UA13","UA14","UA18","UA22",
+        "SXM7","IFOBT"
+    ]
+    result = {}
+    urine_other = None
+    interpret_cache = load_all_interpret()
+    condition_cache = load_all_conditions()
+    for row in lab.get("data", []):
+        if row.get("testNormalBook") == True:
+
+            tcode = row.get("tcode")
+            value = escape(row.get("testResult"))
+
+            if tcode not in TARGET_TCODES:
+                continue
+
+            #urine wbc, urine rbc
+            if tcode == 'UA13' or tcode == 'UA14':
+                if "-" in value:
+                    u_wbc_rbc_value = value.split("-", 1)[1].strip()
+                    try:
+                        float(u_wbc_rbc_value)
+                        value = u_wbc_rbc_value
+                    except ValueError:
+                        continue
+                else:
+                    continue
+
+            if tcode == 'UA05' or tcode == 'UA06':
+                match = re.search(r"\d+", value)
+                if match:
+                    value = int(match.group())
+
+
+            if tcode == 'UA18':
+                try:
+                    float(value)
+                except ValueError:
+                    continue
+
+            if tcode == 'UA22':
+                urine_other = value
+                continue
+
+            if tcode == 'CBC10':
+                continue
+
+            condi = match_condition(value, age, gender, condition_cache.get(tcode))
+
+            if not condi:
+                continue
+
+            interpret_id = condi['condiInterpretId']
+
+            interpret_data = interpret_cache.get(interpret_id)
+
+            if interpret_data:
+                result[tcode] = {
+                    "condi_id": interpret_id,
+                    "interpret": interpret_data.get("interpret"),
+                    "advise": interpret_data.get("advise")
+                }
+            else:
+                result[tcode] = {
+                    "condi_id": "",
+                    "interpret": "",
+                    "advise": ""
+                }
+
+    def bun_cre_inpadv(bun_condi_inp_id, cre_condi_inp_id):
+        # กรณีผิดปกติทั้งคู่ -> 004005
+        abnormal_pairs = {
+            ('004003', '004002'),
+            ('004002', '004004'),
+            ('004003', '004004'),
+        }
+        if (bun_condi_inp_id, cre_condi_inp_id) in abnormal_pairs:
+            return api_interpert('004005')
+
+        # กรณีค่าตรงกันทั้งคู่
+        if bun_condi_inp_id == cre_condi_inp_id:
+            if bun_condi_inp_id in ['004001', '004002']:
+                return api_interpert(bun_condi_inp_id)
+
+        # CRE เดี่ยว
+        if cre_condi_inp_id in ['004001', '004002', '004004', '004006']:
+            return api_interpert(cre_condi_inp_id)
+
+        # BUN เดี่ยว
+        if bun_condi_inp_id == '004003':
+            return api_interpert(bun_condi_inp_id)
+
+    bun_cre_inp = None
+    bun_cre_adv = None
+    if "BUN" in result and "CRE" in result:
+        bun_cre_id = bun_cre_inpadv(
+            result["BUN"]["condi_id"],
+            result["CRE"]["condi_id"]
+        )
+        if bun_cre_id:
+            bun_cre_inp = bun_cre_id.get("interpret")
+            bun_cre_adv = bun_cre_id.get("advise")
+
+    def cho_tg_hdl_ldl_inadv(cho_condi_inp_id, tg_condi_inp_id, ldl_condi_inp_id):
+        # CHO และ LDL = 007003 (มี return ทันที)
+        if cho_condi_inp_id == '007003' and ldl_condi_inp_id == '007003':
+            return api_interpert('007003')
+
+        # CHO = 007004 และ LDL = 007006 (มี return ทันที)
+        if cho_condi_inp_id == '007004' and ldl_condi_inp_id == '007006':
+            return api_interpert('007004')
+
+        result = None
+
+        # กลุ่มปกติ
+        if '007002' in (cho_condi_inp_id, tg_condi_inp_id, ldl_condi_inp_id):
+            result = api_interpert('007002')
+
+        # CHO ต่ำ
+        if cho_condi_inp_id == '007001':
+            result = api_interpert('007001')
+
+        # สูงกว่าเล็กน้อย
+        if '007003' in (cho_condi_inp_id, tg_condi_inp_id, ldl_condi_inp_id):
+            result = api_interpert('007003')
+
+        # สูง
+        if (
+                cho_condi_inp_id == '007004' or
+                tg_condi_inp_id == '007005' or
+                ldl_condi_inp_id == '007006'
+        ):
+            result = api_interpert('007004')
+
+        return result
+
+    cho_tg_ldl_inp = None
+    cho_tg_ldl_adv = None
+    if "CHO" in result and "TG" in result:
+
+        ldl_key = None
+
+        if "LDLD" in result:
+            ldl_key = "LDLD"
+        elif "LDL2" in result:
+            ldl_key = "LDL2"
+
+        if ldl_key:
+            cho_tg_ldl_id = cho_tg_hdl_ldl_inadv(
+                result["CHO"]["condi_id"],
+                result["TG"]["condi_id"],
+                result[ldl_key]["condi_id"],
+            )
+        if cho_tg_ldl_id:
+            cho_tg_ldl_inp = cho_tg_ldl_id.get("interpret")
+            cho_tg_ldl_adv = cho_tg_ldl_id.get("advise")
+
+
+    def liver_inadv(ast_inp_id, alt_inp_id, alk_inp_id):
+        values = (ast_inp_id, alt_inp_id, alk_inp_id)
+
+        # ระดับผิดปกติ
+        if '008003' in values:
+            return api_interpert('008003')
+
+        # ระดับกึ่ง
+        if '008002' in values:
+            return api_interpert('008002')
+
+        # ระดับปกติ
+        if '008001' in values:
+            return api_interpert('008001')
+
+        return None
+
+
+    ast_alt_alk_inp = None
+    ast_alt_alk_adv = None
+    if "AST" in result and "ALT" in result and "ALK" in result:
+        ast_alt_alk_id = liver_inadv(
+            result["AST"]["condi_id"],
+            result["ALT"]["condi_id"],
+            result["ALK"]["condi_id"],
+        )
+        if ast_alt_alk_id:
+            ast_alt_alk_inp = ast_alt_alk_id.get("interpret")
+            ast_alt_alk_adv = ast_alt_alk_id.get("advise")
+
+
+    def cbc_diff_interpret(n_id, l_id, m_id, e_id, b_id):
+        result = None
+        # ปกติทุกตัว
+        if (
+                n_id == "011001" and
+                l_id == "012001" and
+                m_id == "013001" and
+                e_id == "014001" and
+                b_id == "015001"
+        ):
+            data = api_interpert(n_id)
+            result = data.get("interpret")
+
+        # ต่ำกว่าปกติ (ระดับแรก)
+        if (
+                n_id == "011002" or
+                l_id == "012002" or
+                m_id == "013002"
+        ):
+            data = api_interpert("011002")
+            result = data.get("interpret")
+
+        # ต่ำกว่าปกติ (ระดับรุนแรงกว่า)
+        if (
+                n_id == "011003" or
+                l_id == "012003" or
+                m_id == "013003" or
+                e_id == "014002" or
+                b_id == "015002"
+        ):
+            data = api_interpert("011003")
+            result = data.get("interpret")
+
+        return result
+
+    cbc_diff_inp = None
+    cbc_diff_adv = None
+
+    if "CBC02" in result and "CBC03" in result and "CBC04" in result and "CBC05" in result and "CBC06" in result:
+        adv_n = result["CBC02"]["advise"]
+        adv_l = result["CBC03"]["advise"]
+        adv_m = result["CBC04"]["advise"]
+        adv_e = result["CBC05"]["advise"]
+        adv_b = result["CBC06"]["advise"]
+        cbc_diff_adv = text_br(adv_n, adv_l, adv_m, adv_e, adv_b)
+        cbc_diff_inp = cbc_diff_interpret(
+            result["CBC02"]["condi_id"],
+            result["CBC03"]["condi_id"],
+            result["CBC04"]["condi_id"],
+            result["CBC05"]["condi_id"],
+            result["CBC06"]["condi_id"],
+        )
+
+
+    def urine_protein_glucose_interpret(u1_p_id, u1_g_id):
+        # พบแพทย์ (รุนแรงสุด)
+        if u1_p_id in {"017007", "017006"}:
+            return api_interpert(u1_p_id).get("interpret")
+        # ผิดปกติ
+        if u1_p_id == "017005":
+            return api_interpert(u1_p_id).get("interpret")
+        if u1_g_id == "017004":
+            return api_interpert(u1_g_id).get("interpret")
+        # ระดับรองลงมา
+        if u1_p_id == "017003":
+            return api_interpert(u1_p_id).get("interpret")
+        if u1_g_id == "017002":
+            return api_interpert(u1_g_id).get("interpret")
+        return None
+
+    u_micro_adv = None
+    u_micro_inp = None
+    u_wbc_inp_id = None
+    u_rbc_inp_id = None
+    u_micro_keys = ["UA13", "UA14", "UA18"]
+    if any(k in result for k in u_micro_keys):
+        advises = [result.get(k, {}).get("advise", "") for k in u_micro_keys]
+        u_micro_adv = text_br(*advises)
+
+        u_wbc_inp_id = result.get("UA13", {}).get("interpret", "")
+        u_rbc_inp_id = result.get("UA14", {}).get("interpret", "")
+        u_crystal_id = result.get("UA18", {}).get("interpret", "")
+
+    urine_p_g_inp = 'ไม่ตรวจ'
+    urine_p_g_adv = None
+    if "UA05" in result and "UA06" in result:
+        urine_protein = result["UA05"]["advise"]
+        urine_glu = result["UA06"]["advise"]
+        urine_p_g_adv = text_br(urine_protein, urine_glu)
+        urine_p_g_inp = urine_protein_glucose_interpret(
+            result["UA05"]["condi_id"],
+            result["UA06"]["condi_id"],
+        )
+        #u_other_ip = find_cast(urine_other)
+        #u_micro_inp = api_interpert(u_other_ip).get("interpret")
+        u_other_ip = ''
+        u_micro_inp = ''
+
+    return  (
+        f'<span id="intp_glu" hx-swap-oob="true">{result.get("GTT2", {}).get("interpret", "")}</span>'
+        f'<span id="adv_glu" hx-swap-oob="true">{result.get("GTT2", {}).get("advise", "")}</span>'
+        f'<span id="intp_bun_cre" hx-swap-oob="true">{bun_cre_inp or ""}</span>'
+        f'<span id="adv_bun_cre" hx-swap-oob="true">{bun_cre_adv or ""}</span>'
+        f'<span id="intp_ua" hx-swap-oob="true">{result.get("UA", {}).get("interpret", "")}</span>'
+        f'<span id="adv_ua" hx-swap-oob="true">{result.get("UA", {}).get("advise", "")}</span>'
+        f'<span id="intp_cho_tg_ldl" hx-swap-oob="true">{cho_tg_ldl_inp or ""}</span>'
+        f'<span id="adv_cho_tg_ldl" hx-swap-oob="true">{cho_tg_ldl_adv or ""}</span>'
+        f'<span id="intp_ast_alt_alk" hx-swap-oob="true">{ast_alt_alk_inp or ""}</span>'
+        f'<span id="adv_ast_alt_alk" hx-swap-oob="true">{ast_alt_alk_adv or ""}</span>'
+        f'<span id="intp_cbc_hb_mcv" hx-swap-oob="true">{result.get("CBC11", {}).get("interpret", "")}</span>'
+        f'<span id="adv_cbc_hb_mcv" hx-swap-oob="true">{result.get("CBC11", {}).get("advise", "")}</span>'
+        f'<span id="intp_cbc_pl_count" hx-swap-oob="true">{result.get("CBC08", {}).get("interpret", "")}</span>'
+        f'<span id="adv_cbc_pl_count" hx-swap-oob="true">{result.get("CBC08", {}).get("advise", "")}</span>'
+        f'<span id="intp_cbc_wbc_count" hx-swap-oob="true">{result.get("CBC01", {}).get("interpret", "")}</span>'
+        f'<span id="adv_cbc_wbc_count" hx-swap-oob="true">{result.get("CBC01", {}).get("advise", "")}</span>'
+        f'<span id="intp_cbc_diff" hx-swap-oob="true">{cbc_diff_inp or ""}</span>'
+        f'<span id="adv_cbc_diff" hx-swap-oob="true">{cbc_diff_adv or ""}</span>'
+        f'<span id="intp_urine_p_g" hx-swap-oob="true">{urine_p_g_inp or ""}</span>'
+        f'<span id="adv_urine_p_g" hx-swap-oob="true">{urine_p_g_adv or ""}</span>'
+        f'<span id="adv_stool" hx-swap-oob="true">{result.get("SXM7", {}).get("advise", "")}</span>'
+        f'<span id="intp_ifobt" hx-swap-oob="true">{result.get("IFOBT", {}).get("interpret", "")}</span>'
+        f'<span id="adv_ifobt" hx-swap-oob="true">{result.get("IFOBT", {}).get("advise", "")}</span>'
+        f'<span id="intp_urine_micro" hx-swap-oob="true">{u_micro_inp or ""}</span>'
+        f'<span id="adv_urine_micro" hx-swap-oob="true">{u_micro_adv or ""}</span>'
+    )
+
+
+def text_br(*advises):
+    clean_advises = [adv for adv in advises if adv]
+    return "<br>".join(clean_advises)
+
+
+@comhealth.route('/api/testspecial/<int:serviceNo>/<int:gender>/<int:age>')
+def testspecial(serviceNo, gender, age):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+    api_lab_url = f"https://webmt.mahidol.ac.th/api/Labs/service/testsummary/{serviceNo}"
+    try:
+        response = requests.get(api_lab_url)
+        lab = response.json()
+    except:
+        return '<tr><td colspan="4">Error loading data</td></tr>'
+
+    rows = ""
+    cre_value = None
+    for row in lab.get("data", []):
+        tcode = escape(row.get("tcode", "-"))
+        if tcode == 'CRE':
+            cre_value = escape(row.get("testResult", "-"))
+        if not row.get("testNormalBook") and not row.get("isProfile"):
+            testname = escape(row.get("testNamePrintResult", "-"))
+            if tcode == 'eGFR':
+                value = egfr(gender,cre_value,age)
+            else:
+                value = escape(row.get("testResult", "-"))
+            ref = escape(row.get("refBookTh", "-"))
+            unit = row.get("unit", "")
+
+            rows += f'''
+                <tr>
+                    <td>{testname}</td>
+                    <td class="text-center">{value}</td>
+                    <td>{ref}</td>
+                    <td>{unit}</td>
+                </tr>
+            '''
+    if not rows:
+        rows = '<tr><td colspan="4" class="text-muted text-center">ไม่มีข้อมูลรายการตรวจพิเศษ</td></tr>'
+
+    return f'''
+            <tbody id="testspecial">
+                {rows}
+            </tbody>
+        '''
+
+
+@comhealth.route('/api/xray/<int:serviceNo>')
+def xray_result(serviceNo):
+    access_response = _require_online_results_access()
+    if access_response:
+        return access_response
+    api_url = f"https://webmt.mahidol.ac.th/api/XRays/{serviceNo}"
+    reponse_xray = requests.get(api_url)
+    xray =  reponse_xray.json()
+    status = xray.get("status")
+    chest = xray.get("chest")
+    isnormal = xray.get("normal")
+
+    if status == 404:
+        status = 'ไม่ X-ray'
+        chest = ''
+        status_class = "has-text-black"
+    else:
+        status_class = "has-text-warning" if str(isnormal).lower() == "false" else "has-text-success"
+
+    return (
+        f'<span id="xray_status" hx-swap-oob="true" class="{status_class}">{status}</span>'
+        f'<span id="xray_chest" hx-swap-oob="true">{chest}</span>'
+    )
+
+
+def render_lab_oob(tcode, value, ref, testname, unit, color):
+    return (
+        f'<span id="{tcode}_name" hx-swap-oob="true">{testname}</span>'
+        f'<span id="{tcode}_result" hx-swap-oob="true" class="{color}">{value}</span>'
+        f'<span id="{tcode}_ref" hx-swap-oob="true">{ref}</span>'
+        f'<span id="{tcode}_unit" hx-swap-oob="true">{unit}</span>'
+    )
+
+
+def api_interpert(condiinterpret_id):
+    interpret_cache = load_all_interpret()
+    return interpret_cache.get(condiinterpret_id)
+
+
+def api_condition(tcode):
+    condi_url = f"https://webmt.mahidol.ac.th/api/Conditions/subject/{tcode}"
+    return requests.get(condi_url).json()["data"]
+
+
+def match_condition(test_result, age, sex, conditions):
+    for c in conditions:
+
+        # ---------- เพศ ----------
+        if c.get("sex") not in ("0", sex):
+            continue
+
+        condi_type = c.get("condiType")
+        # ---------- อายุ ----------
+        condi_type_age = c.get("condiTypeAge")
+
+        if condi_type == "=":
+            if str(test_result).strip().lower() == str(c.get("result1")).strip().lower():
+                return {
+                    "condiId": c["condiId"],
+                    "condiInterpretId": c["condiInterpretId"],
+                    "groupCondiId": c["groupCondiId"],
+                }
+            continue
+
+        try:
+            test_result = float(test_result)
+        except (TypeError, ValueError):
+            continue
+
+        if condi_type_age == ">":
+            if age <= int(c.get("age", 0)):
+                continue
+
+        elif condi_type_age == ">=":
+            if age < int(c.get("age", 0)):
+                continue
+
+        elif condi_type_age == "<":
+            if age >= int(c.get("age", 0)):
+                continue
+
+        elif condi_type_age == "<=":
+            if age > int(c.get("age", 0)):
+                continue
+
+        elif condi_type_age == "between":
+            age1 = int(c.get("age", 0))
+            age2 = int(c.get("age2", 0))
+            if not (age1 <= age <= age2):
+                continue
+
+        # ---------- ค่า Test_Result ----------
+        condi_type = c.get("condiType")
+        r1 = float(c.get("result1"))
+        r2 = float(c.get("result2")) if c.get("result2") else None
+
+        match = False
+
+        if condi_type == ">":
+            match = test_result > r1
+
+        elif condi_type == ">=":
+            match = test_result >= r1
+
+        elif condi_type == "<":
+            match = test_result < r1
+
+        elif condi_type == "<=":
+            match = test_result <= r1
+
+        elif condi_type == "between":
+            match = r1 <= test_result <= r2
+
+        if match:
+            return {
+                "condiId": c.get("condiId"),
+                "condiInterpretId": c.get("condiInterpretId"),
+                "ref": c.get("refEng"),
+                "unit": c.get("unit"),
+            }
+
+    return None
+
+
+def parse_bp(bp_str):
+    s, d = bp_str.split("/")
+    return int(s), int(d)
+
+
+def check_range(bp, r1, r2, cond):
+    s, d = bp
+    r1s, r1d = parse_bp(r1)
+
+    if cond == "<":
+        return (s < r1s) or (d < r1d)
+
+    if cond == ">=":
+        return (s >= r1s) or (d >= r1d)
+
+    if cond == "between":
+        r2s, r2d = parse_bp(r2)
+        return (r1s <= s <= r2s) or (r1d <= d <= r2d)
+
+    return False
+
+
+def get_bp_interpret_id(result_bp, data):
+    s, d = map(int, result_bp.split("/"))
+
+    # ตรวจความดันต่ำก่อน
+    if s < 90 or d < 60:
+        return "001001"
+
+    matches = []
+
+    for row in data:
+        r1s, r1d = map(int, row["result1"].split("/"))
+
+        if row["condiType"] == "between":
+            r2s, r2d = map(int, row["result2"].split("/"))
+
+            if (r1s <= s <= r2s) or (r1d <= d <= r2d):
+                matches.append(row)
+
+        elif row["condiType"] == ">=":
+            if s >= r1s or d >= r1d:
+                matches.append(row)
+
+    if matches:
+        return max(matches, key=lambda x: int(x["condiId"]))["condiInterpretId"]
+
+    return None
+
+    return max(matches, key=lambda x: int(x["condiId"]))["condiInterpretId"]
+
+
+def egfr(gender_code, cre, age):
+    if age <= 0:
+        return ""
+
+    try:
+        cre = float(cre)
+        age = int(age)
+
+        if gender_code == 2:  # หญิง
+            g = 144
+            if cre <= 0.7:
+                gfr = g * (cre / 0.7) ** -0.329 * (0.993 ** age)
+            else:
+                gfr = g * (cre / 0.7) ** -1.209 * (0.993 ** age)
+
+        elif gender_code == 1:  # ชาย
+            g = 141
+            if cre <= 0.9:
+                gfr = g * (cre / 0.9) ** -0.411 * (0.993 ** age)
+            else:
+                gfr = g * (cre / 0.9) ** -1.209 * (0.993 ** age)
+        else:
+            return ""
+
+        return f"{gfr:.2f}"
+
+    except (TypeError, ValueError):
+        return ""

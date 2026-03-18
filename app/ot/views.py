@@ -5,12 +5,21 @@ from collections import defaultdict, namedtuple
 
 import dateutil.parser
 import pandas as pd
+from openpyxl import Workbook
 from dateutil import parser
 import arrow
 from flask_login import login_required, current_user
 import requests
 import os
 
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import cast, Date, extract, and_
 
 from werkzeug.utils import secure_filename
@@ -40,6 +49,9 @@ localtz = pytz.timezone('Asia/Bangkok')
 login_tuple = namedtuple('LoginPair', ['staff_id', 'start', 'end', 'start_id', 'end_id'])
 
 MAX_LATE_MINUTES = 45
+
+pdfmetrics.registerFont(TTFont('Sarabun', 'app/static/fonts/THSarabunNew.ttf'))
+pdfmetrics.registerFont(TTFont('SarabunBold', 'app/static/fonts/THSarabunNewBold.ttf'))
 
 
 def convert_to_fiscal_year(date):
@@ -1322,6 +1334,403 @@ def convert_time_format(time):
             return None
 
 
+def write_ot_report_workbook(writer, records_df, format='timesheet'):
+    total_work_minutes = records_df.groupby(['fullname', 'sap'])['work_minutes'].sum()
+    total_work_minutes.apply(convert_time_format).to_excel(writer, sheet_name='total_minutes')
+
+    total_payment = records_df.groupby(['fullname', 'sap'])['payment'].sum()
+    total_payment.to_excel(writer, sheet_name='total_payment')
+
+    renamed_df = records_df.copy()
+    if 'staff' in renamed_df.columns:
+        del renamed_df['staff']
+    renamed_df = renamed_df.rename(columns={
+        'sap': 'รหัสบุคคล',
+        'fullname': 'ชื่อ',
+        'position': 'ตำแหน่งงาน',
+        'startDate': 'วันที่',
+        'work_minutes': 'เวลาทำงาน',
+        'rate': 'อัตรา',
+        'timeslot': 'ช่วงเวลา'
+    })
+
+    timesheet = renamed_df[['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'อัตรา', 'start', 'end', 'checkins', 'checkouts',
+                            'late_checkin_display', 'late_minutes', 'early_checkout_display', 'early_minutes',
+                            'เวลาทำงาน', 'payment']]
+
+    if format == 'report':
+        summary = renamed_df.pivot_table(['เวลาทำงาน', 'payment'],
+                                         ['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'ช่วงเวลา', 'อัตรา'],
+                                         'วันที่',
+                                         margins=True,
+                                         aggfunc='sum')
+        summary['ค่าตอบแทน'] = summary[[c for c in summary.columns if c[0] == 'payment' and c[1] != 'All']].sum(axis=1)
+        summary = summary[['เวลาทำงาน', 'ค่าตอบแทน']]
+        summary['ค่าตอบแทน'] = summary['ค่าตอบแทน'].map(lambda x: round(x, 2))
+        summary['เวลาทำงาน'] = summary['เวลาทำงาน'].applymap(convert_time_format)
+        summary.to_excel(writer, sheet_name='summary_report')
+
+    timesheet.to_excel(writer, sheet_name='timesheet')
+
+
+THAI_MONTHS = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+]
+
+THAI_WEEKDAYS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
+
+
+def format_buddhist_date_range(start_date, end_date):
+    start_text = f'{start_date.day} {THAI_MONTHS[start_date.month - 1]} {start_date.year + 543}'
+    end_text = f'{end_date.day} {THAI_MONTHS[end_date.month - 1]} {end_date.year + 543}'
+    return f'{start_text} - {end_text}'
+
+
+def build_custom_ot_report_workbook(records_df, cal_start, cal_end):
+    report_df = records_df[records_df['payment'].notna()].copy()
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+
+    renamed_df = report_df.copy()
+    if 'staff' in renamed_df.columns:
+        del renamed_df['staff']
+    renamed_df = renamed_df.rename(columns={
+        'sap': 'รหัสบุคคล',
+        'fullname': 'ชื่อ',
+        'position': 'ตำแหน่งงาน',
+        'startDate': 'วันที่',
+        'work_minutes': 'เวลาทำงาน',
+        'rate': 'อัตรา',
+        'timeslot': 'ช่วงเวลา',
+        'start': 'เวลาเริ่มปฏิบัติงาน',
+        'end': 'เวลาเลิกปฏิบัติงาน',
+        'checkins': 'เวลาเข้างานจริง',
+        'checkouts': 'เวลาออกงานจริง',
+        'payment': 'จำนวนเงินที่ได้รับ',
+    })
+
+    write_total_minutes_custom_sheet(workbook, report_df)
+    write_total_payment_custom_sheet(workbook, report_df)
+    write_summary_report_custom_sheet(workbook, renamed_df, cal_end)
+    write_timesheet_custom_sheet(workbook, renamed_df)
+    write_finance_form_custom_sheet(workbook, renamed_df, cal_start, cal_end)
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def normalize_ot_report_workbook(output):
+    return output
+
+
+def write_total_minutes_custom_sheet(workbook, report_df):
+    sheet = workbook.create_sheet('total_minutes  ไม่แก้ไข')
+    sheet.append(['fullname', 'sap', 'work_minutes'])
+    total_work_minutes = report_df.groupby(['fullname', 'sap'])['work_minutes'].sum().reset_index()
+    for row in total_work_minutes.itertuples(index=False):
+        sheet.append([row.fullname, row.sap, convert_time_format(row.work_minutes)])
+
+
+def write_total_payment_custom_sheet(workbook, report_df):
+    sheet = workbook.create_sheet('total_payment')
+    sheet.append(['ชื่อ - สกุล', 'รหัส sap', 'จำนวนเงินที่ได้รับ'])
+    total_payment = report_df.groupby(['fullname', 'sap'])['payment'].sum().reset_index()
+    for row in total_payment.itertuples(index=False):
+        sheet.append([row.fullname, row.sap, round(row.payment, 2)])
+    total_row = sheet.max_row + 1
+    sheet.cell(row=total_row, column=3).value = f'=SUM(C2:C{total_row - 1})'
+
+
+def write_summary_report_custom_sheet(workbook, renamed_df, cal_end):
+    sheet = workbook.create_sheet('summary_report ไม่แก้ไข')
+
+    date_values = sorted(renamed_df['วันที่'].dropna().unique())
+    start_col = 6
+    all_col = start_col + len(date_values)
+    payment_col = all_col + 1
+    sheet.cell(row=1, column=start_col).value = 'เวลาทำงาน'
+    sheet.merge_cells(start_row=1, start_column=start_col, end_row=1, end_column=all_col)
+    sheet.cell(row=1, column=payment_col).value = 'ค่าตอบแทน'
+    sheet.cell(row=2, column=5).value = 'วัน'
+    sheet.cell(row=3, column=5).value = 'วันที่'
+
+    for offset, date_value in enumerate(date_values):
+        current_date = parser.parse(date_value).date()
+        sheet.cell(row=2, column=start_col + offset).value = THAI_WEEKDAYS[current_date.weekday()]
+        sheet.cell(row=3, column=start_col + offset).value = current_date.day
+    sheet.cell(row=3, column=all_col).value = 'All'
+
+    for col_no, header in enumerate(['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'ช่วงเวลา', 'อัตรา'], start=1):
+        sheet.cell(row=4, column=col_no).value = header
+
+    summary = renamed_df.pivot_table(['เวลาทำงาน', 'จำนวนเงินที่ได้รับ'],
+                                     ['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'ช่วงเวลา', 'อัตรา'],
+                                     'วันที่',
+                                     margins=True,
+                                     aggfunc='sum')
+    payment_cols = [c for c in summary.columns if c[0] == 'จำนวนเงินที่ได้รับ' and c[1] != 'All']
+    summary['ค่าตอบแทน'] = summary[payment_cols].sum(axis=1)
+    summary = summary[['เวลาทำงาน', 'ค่าตอบแทน']]
+
+    row_no = 5
+    current_group_start = None
+    current_group_key = None
+    for index_values, row_values in summary.iterrows():
+        name, sap, position, timeslot, rate = index_values
+        is_total_row = name == 'All'
+        if is_total_row:
+            if current_group_start is not None and row_no - 1 > current_group_start:
+                for merge_col in range(1, 4):
+                    sheet.merge_cells(start_row=current_group_start, start_column=merge_col,
+                                      end_row=row_no - 1, end_column=merge_col)
+            current_group_start = None
+            current_group_key = None
+            sheet.cell(row=row_no, column=1).value = 'All'
+        else:
+            group_key = (name, sap, position)
+            if current_group_key is None:
+                current_group_start = row_no
+                current_group_key = group_key
+            elif group_key != current_group_key:
+                if row_no - 1 > current_group_start:
+                    for merge_col in range(1, 4):
+                        sheet.merge_cells(start_row=current_group_start, start_column=merge_col,
+                                          end_row=row_no - 1, end_column=merge_col)
+                current_group_start = row_no
+                current_group_key = group_key
+
+            sheet.cell(row=row_no, column=1).value = name
+            sheet.cell(row=row_no, column=2).value = sap
+            sheet.cell(row=row_no, column=3).value = position
+            sheet.cell(row=row_no, column=4).value = timeslot
+            sheet.cell(row=row_no, column=5).value = rate
+
+        for offset, date_value in enumerate(date_values):
+            value = row_values.get(('เวลาทำงาน', date_value))
+            sheet.cell(row=row_no, column=start_col + offset).value = convert_time_format(value)
+        sheet.cell(row=row_no, column=all_col).value = convert_time_format(row_values.get(('เวลาทำงาน', 'All')))
+        payment_value = row_values.get(('ค่าตอบแทน', ''))
+        if pd.notna(payment_value):
+            sheet.cell(row=row_no, column=payment_col).value = round(payment_value, 2)
+        row_no += 1
+
+    if current_group_start is not None and row_no - 2 > current_group_start:
+        for merge_col in range(1, 4):
+            sheet.merge_cells(start_row=current_group_start, start_column=merge_col,
+                              end_row=row_no - 2, end_column=merge_col)
+
+
+def write_timesheet_custom_sheet(workbook, renamed_df):
+    sheet = workbook.create_sheet('timesheet')
+    columns = ['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'อัตรา', 'เวลาเริ่มปฏิบัติงาน', 'เวลาเลิกปฏิบัติงาน',
+               'เวลาเข้างานจริง', 'เวลาออกงานจริง', 'late_checkin_display', 'late_minutes',
+               'early_checkout_display', 'early_minutes', 'จำนวนเวลาปฏิบัติงาน', 'จำนวนเงินที่ได้รับ']
+    sheet.append(columns)
+
+    export_df = renamed_df.copy()
+    export_df['จำนวนเวลาปฏิบัติงาน'] = export_df['เวลาทำงาน']
+    for row in export_df[columns].itertuples(index=False):
+        sheet.append(list(row))
+
+
+def write_finance_form_custom_sheet(workbook, renamed_df, cal_start, cal_end):
+    sheet = workbook.create_sheet('ฟอร์มที่ต้องส่งให้การเงิน')
+    row_no = 1
+    date_range_text = format_buddhist_date_range(cal_start.date(), cal_end.date())
+
+    grouped = renamed_df.groupby(['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน'], sort=True)
+    for group_key in grouped.groups:
+        fullname, sap, position = group_key
+        staff_df = grouped.get_group(group_key)
+
+        sheet.cell(row=row_no, column=1).value = 'ใบลงเวลา และรายงานผลการปฏิบัติงานนอกเวลาราชการ   ประจำวันที่  '
+        sheet.merge_cells(start_row=row_no, start_column=1, end_row=row_no, end_column=4)
+        sheet.cell(row=row_no, column=5).value = date_range_text
+        sheet.merge_cells(start_row=row_no, start_column=5, end_row=row_no, end_column=7)
+
+        row_no += 1
+        sheet.cell(row=row_no, column=1).value = fullname
+        sheet.merge_cells(start_row=row_no, start_column=1, end_row=row_no, end_column=2)
+        sheet.cell(row=row_no, column=3).value = 'ตำแหน่งงาน'
+        sheet.cell(row=row_no, column=4).value = position
+        sheet.cell(row=row_no, column=5).value = 'รหัสบุคคล'
+        sheet.cell(row=row_no, column=6).value = sap
+
+        row_no += 1
+        headers = ['เวลาเริ่มปฏิบัติงาน', 'เวลาเลิกปฏิบัติงาน', 'อัตราจ่าย', 'เวลาเข้างานจริง',
+                   'เวลาออกงานจริง', 'จำนวนเวลาปฏิบัติงาน', 'จำนวนเงินที่ได้รับ']
+        for col_no, header in enumerate(headers, start=1):
+            sheet.cell(row=row_no, column=col_no).value = header
+
+        for record in staff_df[['เวลาเริ่มปฏิบัติงาน', 'เวลาเลิกปฏิบัติงาน', 'อัตรา', 'เวลาเข้างานจริง',
+                                'เวลาออกงานจริง', 'เวลาทำงาน', 'จำนวนเงินที่ได้รับ']].itertuples(index=False):
+            row_no += 1
+            record_values = list(record)
+            record_values[5] = int(record_values[5]) if pd.notna(record_values[5]) else None
+            record_values[6] = round(record_values[6], 2) if pd.notna(record_values[6]) else None
+            for col_no, value in enumerate(record_values, start=1):
+                sheet.cell(row=row_no, column=col_no).value = value
+
+        row_no += 1
+        sheet.cell(row=row_no, column=1).value = 'รวมทั้งสิ้น'
+        sheet.merge_cells(start_row=row_no, start_column=1, end_row=row_no, end_column=5)
+        sheet.cell(row=row_no, column=6).value = convert_time_format(staff_df['เวลาทำงาน'].sum())
+        sheet.cell(row=row_no, column=7).value = round(staff_df['จำนวนเงินที่ได้รับ'].sum(), 2)
+        row_no += 2
+
+        sheet.cell(row=row_no, column=5).value = 'ข้าพเจ้าขอรับรองว่ามีการปฏิบัติงาน ตามวันเวลาดังกล่าวจริง '
+        sheet.merge_cells(start_row=row_no, start_column=5, end_row=row_no, end_column=7)
+
+        row_no += 1
+        sheet.cell(row=row_no, column=1).value = f'({fullname})'
+        sheet.merge_cells(start_row=row_no, start_column=1, end_row=row_no, end_column=2)
+        sheet.cell(row=row_no, column=3).value = ' ผู้ปฏิบัติงาน'
+
+        row_no += 2
+        sheet.cell(row=row_no, column=5).value = '(ผศ.พญ.สุมนา มัสอูดี)'
+        sheet.merge_cells(start_row=row_no, start_column=5, end_row=row_no, end_column=7)
+
+        row_no += 1
+        sheet.cell(row=row_no, column=1).value = '(นางสาวศศิลิยา  สุทัศน์กุล)'
+        sheet.merge_cells(start_row=row_no, start_column=1, end_row=row_no, end_column=2)
+        sheet.cell(row=row_no, column=3).value = 'ผู้จัดทำ'
+        sheet.cell(row=row_no, column=5).value = 'หัวหน้าศูนย์เทคนิคการแพทย์และรังสีเทคนิคนานาชาติ'
+        sheet.merge_cells(start_row=row_no, start_column=5, end_row=row_no, end_column=7)
+
+        row_no += 1
+        sheet.cell(row=row_no, column=5).value = 'ผู้ควบคุมการปฏิบัติงาน'
+        sheet.merge_cells(start_row=row_no, start_column=4, end_row=row_no, end_column=7)
+
+        row_no += 3
+
+
+def build_finance_pdf(records_df, cal_start, cal_end):
+    report_df = records_df[records_df['payment'].notna()].copy()
+    renamed_df = report_df.copy()
+    if 'staff' in renamed_df.columns:
+        del renamed_df['staff']
+    renamed_df = renamed_df.rename(columns={
+        'sap': 'รหัสบุคคล',
+        'fullname': 'ชื่อ',
+        'position': 'ตำแหน่งงาน',
+        'rate': 'อัตรา',
+        'start': 'เวลาเริ่มปฏิบัติงาน',
+        'end': 'เวลาเลิกปฏิบัติงาน',
+        'checkins': 'เวลาเข้างานจริง',
+        'checkouts': 'เวลาออกงานจริง',
+        'work_minutes': 'เวลาทำงาน',
+        'payment': 'จำนวนเงินที่ได้รับ',
+    })
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('OtPdfTitle', parent=styles['Normal'], fontName='SarabunBold', fontSize=18,
+                                 leading=20, alignment=TA_CENTER)
+    normal_style = ParagraphStyle('OtPdfNormal', parent=styles['Normal'], fontName='Sarabun', fontSize=13,
+                                  leading=15, alignment=TA_LEFT)
+    center_style = ParagraphStyle('OtPdfCenter', parent=normal_style, alignment=TA_CENTER)
+    right_style = ParagraphStyle('OtPdfRight', parent=normal_style, alignment=TA_RIGHT)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=12 * mm, leftMargin=12 * mm,
+                            topMargin=10 * mm, bottomMargin=10 * mm)
+    story = []
+    date_range_text = format_buddhist_date_range(cal_start.date(), cal_end.date())
+    grouped = renamed_df.groupby(['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน'], sort=True)
+
+    for section_index, group_key in enumerate(grouped.groups):
+        fullname, sap, position = group_key
+        staff_df = grouped.get_group(group_key)
+
+        if section_index > 0:
+            story.append(PageBreak())
+
+        story.append(Paragraph('ใบลงเวลา และรายงานผลการปฏิบัติงานนอกเวลาราชการ', title_style))
+        story.append(Paragraph(f'ประจำวันที่ {date_range_text}', center_style))
+        story.append(Spacer(1, 4 * mm))
+
+        info_table = Table([
+            [Paragraph(fullname, normal_style), Paragraph('ตำแหน่งงาน', center_style),
+             Paragraph(position, normal_style), Paragraph('รหัสบุคคล', center_style), Paragraph(str(sap), normal_style)]
+        ], colWidths=[55 * mm, 22 * mm, 45 * mm, 22 * mm, 28 * mm])
+        info_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        story.append(info_table)
+        story.append(Spacer(1, 3 * mm))
+
+        header_row = [
+            Paragraph('เวลาเริ่มปฏิบัติงาน', center_style),
+            Paragraph('เวลาเลิกปฏิบัติงาน', center_style),
+            Paragraph('อัตราจ่าย', center_style),
+            Paragraph('เวลาเข้างานจริง', center_style),
+            Paragraph('เวลาออกงานจริง', center_style),
+            Paragraph('จำนวนเวลาปฏิบัติงาน', center_style),
+            Paragraph('จำนวนเงินที่ได้รับ', center_style),
+        ]
+        rows = [header_row]
+        for record in staff_df[['เวลาเริ่มปฏิบัติงาน', 'เวลาเลิกปฏิบัติงาน', 'อัตรา', 'เวลาเข้างานจริง',
+                                'เวลาออกงานจริง', 'เวลาทำงาน', 'จำนวนเงินที่ได้รับ']].itertuples(index=False):
+            rows.append([
+                Paragraph(str(record[0] or ''), normal_style),
+                Paragraph(str(record[1] or ''), normal_style),
+                Paragraph(str(record[2] or ''), center_style),
+                Paragraph(str(record[3] or ''), normal_style),
+                Paragraph(str(record[4] or ''), normal_style),
+                Paragraph(str(convert_time_format(record[5]) or ''), center_style),
+                Paragraph(f'{record[6]:,.2f}' if pd.notna(record[6]) else '', right_style),
+            ])
+
+        total_minutes = convert_time_format(staff_df['เวลาทำงาน'].sum()) or ''
+        total_payment = staff_df['จำนวนเงินที่ได้รับ'].sum()
+        rows.append([
+            Paragraph('รวมทั้งสิ้น', normal_style), '', '', '', '',
+            Paragraph(total_minutes, center_style),
+            Paragraph(f'{total_payment:,.2f}', right_style),
+        ])
+
+        detail_table = Table(rows, repeatRows=1,
+                             colWidths=[28 * mm, 28 * mm, 18 * mm, 28 * mm, 28 * mm, 22 * mm, 24 * mm])
+        detail_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.whitesmoke),
+            ('SPAN', (0, -1), (4, -1)),
+        ]))
+        story.append(detail_table)
+        story.append(Spacer(1, 5 * mm))
+
+        footer_rows = [
+            ['', '', '', '', Paragraph('ข้าพเจ้าขอรับรองว่ามีการปฏิบัติงาน ตามวันเวลาดังกล่าวจริง ', center_style), '', ''],
+            [Paragraph(f'({fullname})', center_style), '', Paragraph('ผู้ปฏิบัติงาน', center_style), '', '', '', ''],
+            ['', '', '', '', '', '', ''],
+            ['', '', '', '', Paragraph('(ผศ.พญ.สุมนา มัสอูดี)', center_style), '', ''],
+            [Paragraph('(นางสาวศศิลิยา  สุทัศน์กุล)', center_style), '', Paragraph('ผู้จัดทำ', center_style), '',
+             Paragraph('หัวหน้าศูนย์เทคนิคการแพทย์และรังสีเทคนิคนานาชาติ', center_style), '', ''],
+            ['', '', '', Paragraph('ผู้ควบคุมการปฏิบัติงาน', center_style), '', '', ''],
+        ]
+        footer_table = Table(footer_rows, colWidths=[28 * mm, 18 * mm, 22 * mm, 20 * mm, 35 * mm, 20 * mm, 22 * mm])
+        footer_table.setStyle(TableStyle([
+            ('SPAN', (4, 0), (6, 0)),
+            ('SPAN', (0, 1), (1, 1)),
+            ('SPAN', (4, 3), (6, 3)),
+            ('SPAN', (0, 4), (1, 4)),
+            ('SPAN', (4, 4), (6, 4)),
+            ('SPAN', (3, 5), (6, 5)),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        story.append(footer_table)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
 def humanized_work_time(work_time_minutes):
     hours, minutes = divmod(work_time_minutes, 60)
     h = f'{hours:.0f}h'
@@ -1383,15 +1792,6 @@ def get_all_ot_schedule(announcement_id=None, staff_id=None):
                     'startDate': 'วันที่',
                     'timeslot': 'ช่วงเวลา'
                 })
-                if format == 'report':
-                    _table = df.pivot_table(['เวลาทำงาน', 'payment'],
-                                            ['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'ช่วงเวลา', 'อัตรา'],
-                                            'วันที่',
-                                            margins=True,
-                                            aggfunc='sum')
-                    _table['ค่าตอบแทน'] = _table[[c for c in _table.columns
-                                                  if c[0] == 'payment' and c[1] != 'All']].sum(axis=1)
-                    df.to_excel(writer, sheet_name='summary_report')
         output.seek(0)
         if staff_id:
             staff = StaffAccount.query.get(staff_id)
@@ -1604,9 +2004,9 @@ def get_all_ot_records_table(announcement_id=None, staff_id=None):
                 all_records.append(rec)
 
     if download == 'yes':
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            if request.args.get('download_data') == 'counts':
+        if request.args.get('download_data') == 'counts':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 missing_checkins = []
                 for r, c in ot_record_checkins.items():
                     missing_checkins.append({
@@ -1620,44 +2020,24 @@ def get_all_ot_records_table(announcement_id=None, staff_id=None):
                     })
                 df = pd.DataFrame(missing_checkins)
                 df.to_excel(writer, sheet_name='counts')
+        else:
+            df = pd.DataFrame(all_records)
+            if format == 'report':
+                output = build_custom_ot_report_workbook(df, cal_start, cal_end)
+            elif format == 'finance-pdf':
+                output = build_finance_pdf(df, cal_start, cal_end)
             else:
-                df = pd.DataFrame(all_records)
-                total_work_minutes = df.groupby(['fullname', 'sap'])['work_minutes'].sum()
-                total_work_minutes.apply(convert_time_format).to_excel(writer, sheet_name='total_minutes')
-                total_payment = df.groupby(['fullname', 'sap'])['payment'].sum()
-                total_payment.to_excel(writer, sheet_name='total_payment')
-                del df['staff']
-                df = df.rename(columns={
-                    'sap': 'รหัสบุคคล',
-                    'fullname': 'ชื่อ',
-                    'position': 'ตำแหน่งงาน',
-                    'startDate': 'วันที่',
-                    'work_minutes': 'เวลาทำงาน',
-                    'rate': 'อัตรา',
-                    'timeslot': 'ช่วงเวลา'
-                })
-                timesheet = df[['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'อัตรา', 'start', 'end', 'checkins', 'checkouts',
-                                'late_checkin_display', 'late_minutes', 'early_checkout_display','early_minutes',
-                                'เวลาทำงาน', 'payment']]
-                if format == 'report':
-                    _table = df.pivot_table(['เวลาทำงาน', 'payment'],
-                                            ['ชื่อ', 'รหัสบุคคล', 'ตำแหน่งงาน', 'ช่วงเวลา', 'อัตรา'],
-                                            'วันที่',
-                                            margins=True,
-                                            aggfunc='sum')
-                    _table['ค่าตอบแทน'] = _table[[c for c in _table.columns
-                                                  if c[0] == 'payment' and c[1] != 'All']].sum(axis=1)
-                    df = _table[['เวลาทำงาน', 'ค่าตอบแทน']]
-                    df['ค่าตอบแทน'] = df['ค่าตอบแทน'].map(lambda x: round(x, 2))
-                    df['เวลาทำงาน'] = df['เวลาทำงาน'].applymap(convert_time_format)
-                    df.to_excel(writer, sheet_name='summary_report')
-                    timesheet.to_excel(writer, sheet_name='timesheet')
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    write_ot_report_workbook(writer, df, format=format)
         output.seek(0)
         if staff_id:
             staff = StaffAccount.query.get(staff_id)
-            download_name = f'{staff.email}_{cal_start.strftime("%m-%Y")}_ot_{format}.xlsx'
+            ext = 'pdf' if format == 'finance-pdf' else 'xlsx'
+            download_name = f'{staff.email}_{cal_start.strftime("%m-%Y")}_ot_{format}.{ext}'
         else:
-            download_name = f'{cal_start.strftime("%m-%Y")}_ot_{format}_all.xlsx'
+            ext = 'pdf' if format == 'finance-pdf' else 'xlsx'
+            download_name = f'{cal_start.strftime("%m-%Y")}_ot_{format}_all.{ext}'
         return send_file(output, download_name=download_name)
     return jsonify({'data': all_records})
 

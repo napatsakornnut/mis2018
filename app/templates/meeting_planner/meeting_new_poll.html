@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block head %}
     {{ super() }}
-    <link rel="stylesheet" type="text/css" href="https://fastly.jsdelivr.net/npm/daterangepicker/daterangepicker.css"/>
-    <link href="https://fastly.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css"/>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 {% endblock %}
 {% include "meeting_planner/nav.html" %}
 
@@ -25,16 +25,18 @@
                                 {{ form.poll_name(class='input is-danger') }}
                             </div>
                         </div>
-                        <div class="field">
-                            <label class="label">วัน-เวลาเริ่มสำรวจ</label>
-                            <div class="control">
-                                {{ form.start_vote(class="input") }}
+                        <div class="field-body mb-5">
+                            <div class="field">
+                                <label class="label">วัน-เวลาเริ่มสำรวจ</label>
+                                <div class="control">
+                                    {{ form.start_vote(class="input") }}
+                                </div>
                             </div>
-                        </div>
-                        <div class="field">
-                            <label class="label">วัน-เวลาปิดสำรวจ</label>
-                            <div class="control">
-                                {{ form.close_vote(class="input") }}
+                            <div class="field">
+                                <label class="label">วัน-เวลาปิดสำรวจ</label>
+                                <div class="control">
+                                    {{ form.close_vote(class="input") }}
+                                </div>
                             </div>
                         </div>
                         {% if poll_id %}
@@ -94,18 +96,25 @@
                                     <div id="poll_item">
                                         {% for item in form.poll_items %}
                                             <div id="{{ item.id }}">
-                                                <div class="field" >
-                                                    <label class="label">{{ item.start.label }}</label>
-                                                    <div class="control">
-                                                        {{ item.start(class='input') }}
+                                                <p class="mt-4 mb-2"><strong>รายการที่ {{ loop.index }}</strong></p>
+                                                <div class="field-body">
+                                                    <div class="field">
+                                                        <label class="label">{{ item.start.label }}</label>
+                                                        <div class="control">
+                                                            {{ item.start(class='input') }}
+                                                        </div>
+                                                    </div>
+                                                    <div class="field">
+                                                        <label class="label">{{ item.end.label }}</label>
+                                                        <div class="control">
+                                                            {{ item.end(class='input') }}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div class="field">
-                                                    <label class="label">{{ item.end.label }}</label>
-                                                    <div class="control">
-                                                        {{ item.end(class='input') }}
-                                                    </div>
-                                                </div>
+                                                </table>
+                                                {% if not loop.last %}
+                                                    <hr style="background-color: #F3F3F3">
+                                                {% endif %}
                                             </div>
                                         {% endfor %}
                                     </div>
@@ -170,8 +179,8 @@
 {% endblock %}
 {% block scripts %}
     {{ super() }}
-    <script type="text/javascript" src="https://fastly.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
-    <script src="https://fastly.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function () {
             moment.locale('th');
