@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% include "staff/nav.html" %}
+{% block head %}
+    {{ super() }}
+    <link href="https://cdn.jsdelivr.net/gh/octoshrimpy/bulma-o-steps@master/bulma-steps.css" rel="stylesheet"/>
+{% endblock %}
 
 {% block page_content %}
     <section class="section" id="app">
@@ -9,6 +13,31 @@
                     <h1 class="title">รายละเอียดของผู้เข้าร่วม</h1>
                 </div>
             </div>
+            <div class="columns">
+                <div class="column is-half is-offset-one-quarter">
+                    <ul class="steps">
+                        <li class="steps-segment">
+                            <span class="steps-marker is-hollow"></span>
+                            <div class="steps-content">
+                                <p>สร้างรายการอบรม</p>
+                            </div>
+                        </li>
+                        <li class="steps-segment is-active">
+                            <span class="steps-marker is-hollow"></span>
+                            <div class="steps-content">
+                                <p>รายละเอียดผู้เข้าร่วม</p>
+                            </div>
+                        </li>
+                        <li class="steps-segment">
+                            <span class="steps-marker"></span>
+                            <div class="steps-content">
+                                <p>สรุปข้อมูล</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
             <div class="columns">
                 <div class="column has-text-centered">
                     <p class="title is-size-4">{{ seminar.topic }}</p>

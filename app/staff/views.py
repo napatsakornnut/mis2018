@@ -12,10 +12,10 @@ from app.eduqa.models import EduQAInstructor
 from . import staffbp as staff
 from app.main import get_weekdays, mail, app, csrf
 from app.models import Holidays
-from flask import (jsonify, render_template, request,
+from flask import (jsonify, render_template, render_template_string, request,
                    redirect, url_for, flash, session, send_from_directory,
                    make_response, current_app, send_file)
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from sqlalchemy import or_
 from collections import defaultdict, namedtuple
 import pytz
@@ -3280,12 +3280,68 @@ def create_seminar():
             else:
                 return redirect(url_for('staff.seminar_create_record', seminar_id=seminar.id))
         else:
-            flash('พบชื่อกิจกรรมนี้แล้ว กรุณาค้นหาจากชื่อกิจกรรมและกดเข้าร่วมได้โดยไม่ต้องสร้างอบรมใหม่', 'warning')
-            return redirect(url_for('staff.seminar_attends_each_person'))
+            return redirect(url_for('staff.seminar_create_record', seminar_id=is_duplicate.id))
     else:
         for err in form.errors:
             flash('{}: {}'.format(err, form.errors[err]), 'danger')
     return render_template('staff/seminar_create_event.html', form=form)
+
+
+@staff.route('/seminar/suggest')
+@login_required
+def seminar_suggest():
+    q = (request.args.get('q') or '').strip()
+    suggestions = []
+    current_fy = convert_to_fiscal_year(datetime.today())
+    prev_start, prev_end = get_start_end_date_for_fiscal_year(current_fy - 1)
+    _, next_end = get_start_end_date_for_fiscal_year(current_fy + 1)
+    if q:
+        seminars = StaffSeminar.query.filter(
+            StaffSeminar.topic.ilike(f"%{q}%"),
+            StaffSeminar.start_datetime >= prev_start,
+            StaffSeminar.start_datetime <= next_end
+        ).order_by(StaffSeminar.start_datetime.desc()).limit(15).all()
+        for seminar in seminars:
+            suggestions.append({
+                'id': seminar.id,
+                'topic': seminar.topic,
+                'topic_type': seminar.topic_type,
+                'organize_by': seminar.organize_by,
+                'location': seminar.location,
+                'is_online': bool(seminar.is_online),
+                'start_datetime': seminar.start_datetime.isoformat(),
+                'end_datetime': seminar.end_datetime.isoformat(),
+                'start_display': seminar.start_datetime,
+                'end_display': seminar.end_datetime,
+            })
+    return render_template_string("""
+        {% if suggestions %}
+            <div class="box is-12 suggest-box">
+                <p class="is-size-6 has-text-grey">เลือกจากรายการอบรมที่มีอยู่</p>
+                <div class="buttons is-fullwidth">
+                    {% for s in suggestions %}
+                        <button type="button"
+                                class="button is-white is-fullwidth has-text-left"
+                                onclick='applySeminarSuggestion({{ s|tojson }})'>
+                            <strong>
+                                {% if s.topic|length > 20 %}
+                                    {{ s.topic[:170] }}...
+                                {% else %}
+                                    {{ s.topic }}
+                                {% endif %}
+                            </strong>
+                            <span class="is-size-7 has-text-grey">
+                                {{ s.start_display|localdate }} - {{ s.end_display|localdate }}
+                                {% if s.organize_by %}| {{ s.organize_by }}{% endif %}
+                            </span>
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        {% else %}
+            <p class="suggest-empty">ไม่พบรายการอบรมที่ตรงกับคำค้นหา</p>
+        {% endif %}
+            """, suggestions=suggestions)
 
 
 @staff.route('/seminar/add-attend/for-hr/<int:seminar_id>')
