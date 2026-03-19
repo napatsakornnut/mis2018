@@ -9,7 +9,7 @@ from flask_mail import Message
 from sqlalchemy import or_
 from flask import render_template, redirect, flash, url_for, jsonify, request, make_response, current_app
 from flask_login import login_required, current_user
-from app.roles import admin_permission
+from app.roles import it_permission
 from app.software_request import software_request
 from app.software_request.forms import create_request_form, SoftwareRequestTimelineForm, SoftwareRequestIssueForm
 from app.software_request.models import *
@@ -118,7 +118,7 @@ def get_systems():
 
 
 @software_request.route('/admin/index')
-@admin_permission.require()
+@it_permission.require()
 @login_required
 def admin_index():
     tab = request.args.get('tab')
