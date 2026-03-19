@@ -3248,7 +3248,7 @@ def seminar_pre_register_info(seminar_id):
 def create_seminar():
     form = StaffSeminarForm()
     if form.validate_on_submit():
-        is_duplicate = StaffSeminar.query.filter_by(topic=form.topic.data).first()
+        is_duplicate = StaffSeminar.query.filter_by(topic=form.topic.data, start_datetime=form.start_datetime.data).first()
         if not is_duplicate:
             seminar = StaffSeminar()
             form.populate_obj(seminar)
@@ -3325,7 +3325,7 @@ def seminar_suggest():
                                 onclick='applySeminarSuggestion({{ s|tojson }})'>
                             <strong>
                                 {% if s.topic|length > 20 %}
-                                    {{ s.topic[:170] }}...
+                                    {{ s.topic[:150] }}...
                                 {% else %}
                                     {{ s.topic }}
                                 {% endif %}
