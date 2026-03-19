@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 import arrow
 import  pytz
 import requests
@@ -183,14 +184,14 @@ def admin_index():
 def get_timelines(tab):
     start = request.args.get('start')
     end = request.args.get('end')
+    print(start, end)
     if start:
         start = parser.isoparse(start)
     if end:
         end = parser.isoparse(end)
 
     all_timelines = []
-    timelines = SoftwareRequestTimeline.query.filter(SoftwareRequestTimeline.start >= start, SoftwareRequestTimeline.estimate <= end)
-
+    timelines = SoftwareRequestTimeline.query.filter(SoftwareRequestTimeline.start <= end, SoftwareRequestTimeline.estimate >= start)
     if tab == 'private':
         timelines = timelines.filter(SoftwareRequestTimeline.admin_id == current_user.id)
 
@@ -200,7 +201,7 @@ def get_timelines(tab):
                 'id': timeline.id,
                 'title': '{} ({}) - {}'.format(timeline.task, timeline.request.title, timeline.admin.fullname),
                 'start': timeline.start.isoformat(),
-                'end': timeline.estimate.isoformat(),
+                'end': (timeline.estimate + timedelta(days=1)).isoformat(),
                 'borderColor': '#aed581' if timeline.status == 'เสร็จสิ้น' else '#b3e5fc',
                 'backgroundColor': '#aed581' if timeline.status == 'เสร็จสิ้น' else '#b3e5fc',
                 'textColor': '#000000',
