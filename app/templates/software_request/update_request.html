@@ -369,7 +369,7 @@
                                                     </td>
                                                     <td>{{ issue.issue }}</td>
                                                     <td>
-                                                        {{ issue.status }}
+                                                        <span class="tag {{ issue.status_color }}">{{ issue.status }}</span>
                                                         <a hx-swap="innerHTML"
                                                            hx-target="#issue_form"
                                                            hx-get="{{ url_for('software_request.create_issue', issue_id=issue.id) }}">
