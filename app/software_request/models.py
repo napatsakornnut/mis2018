@@ -113,6 +113,14 @@ class SoftwareRequestDetail(db.Model):
             'num_timelines': self.num_timelines
         }
 
+class SoftwareRequestAdmin(db.Model):
+    __tablename__ = 'software_request_admins'
+    id = db.Column('id', db.Integer(), primary_key=True, autoincrement=True)
+    admin_id = db.Column('admin_id', db.ForeignKey('staff_account.id'))
+    admin = db.relationship(StaffAccount, backref=db.backref('software_request_admins'))
+    request_id = db.Column('request_id', db.ForeignKey('software_request_details.id'))
+    request = db.relationship(SoftwareRequestDetail, backref=db.backref('admins', cascade='all, delete-orphan'))
+
 
 class SoftwareRequestTimeline(db.Model):
     __tablename__ = 'software_request_timelines'
