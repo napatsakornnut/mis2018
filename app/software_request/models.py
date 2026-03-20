@@ -6,6 +6,13 @@ from app.room_scheduler.models import RoomResource
 from app.staff.models import StaffAccount
 
 
+software_request_admin_assoc = db.Table('software_request_admin_assoc',
+                                          db.Column('id', db.Integer, autoincrement=True, primary_key=True),
+                                          db.Column('staff_id', db.Integer, db.ForeignKey('staff_account.id')),
+                                          db.Column('request_id', db.Integer, db.ForeignKey('software_request_details.id')),
+                                          )
+
+
 class SoftwareRequestNumberID(db.Model):
     __tablename__ = 'software_request_number_ids'
     id = db.Column('id', db.Integer, autoincrement=True, primary_key=True)
