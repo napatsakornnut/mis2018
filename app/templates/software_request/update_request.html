@@ -402,18 +402,20 @@
                                 </div>
                             </div>
                         </div>
-                        {% if detail.approver_id %}
-                            <div class="field is-horizontal">
-                                <div class="field-label">
-                                    <label class="label">Update ล่าสุด</label>
-                                </div>
-                                <div class="field-body">
-                                    <div class="field">
+                        <div class="field is-horizontal">
+                            <div class="field-label">
+                                <label class="label">Update ล่าสุด</label>
+                            </div>
+                            <div class="field-body">
+                                <div class="field">
+                                    {% if detail.updated_date %}
                                         {{ detail.updated_date|localdatetime }} โดย {{ detail.approver.fullname }}
-                                    </div>
+                                    {% else %}
+                                        ยังไม่มีการอัพเดต
+                                    {% endif %}
                                 </div>
                             </div>
-                        {% endif %}
+                        </div>
                         <div class="field is-grouped is-grouped-centered">
                             <div class="control">
                                 <a href="{{ url_for('software_request.admin_index', tab=tab) }}"

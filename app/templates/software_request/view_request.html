@@ -207,18 +207,20 @@
                                 </div>
                             </div>
                         {% endif %}
-                        {% if detail.approver_id %}
-                            <div class="field is-horizontal">
-                                <div class="field-label">
-                                    <label class="label has-text-left">Update ล่าสุด</label>
-                                </div>
-                                <div class="field-body">
-                                    <div class="field">
+                        <div class="field is-horizontal">
+                            <div class="field-label">
+                                <label class="label">Update ล่าสุด</label>
+                            </div>
+                            <div class="field-body">
+                                <div class="field">
+                                    {% if detail.updated_date %}
                                         {{ detail.updated_date|localdatetime }} โดย {{ detail.approver.fullname }}
-                                    </div>
+                                    {% else %}
+                                        ยังไม่มีการอัพเดต
+                                    {% endif %}
                                 </div>
                             </div>
-                        {% endif %}
+                        </div>
                     </div>
                     <h5 class="title is-size-4">ข้อมูลนัดหมายเพิ่มเติม</h5>
                     <div class="box">
