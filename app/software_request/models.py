@@ -93,6 +93,9 @@ class SoftwareRequestDetail(db.Model):
     approver = db.relationship(StaffAccount, backref=db.backref('approve_requests'), foreign_keys=[approver_id])
     created_id = db.Column('created_id', db.ForeignKey('staff_account.id'))
     created_by = db.relationship(StaffAccount, backref=db.backref('created_requests'), foreign_keys=[created_id])
+    text = db.Column('text', db.String())
+    staffs = db.relationship(StaffAccount, secondary=software_request_admin_assoc,
+                             backref=db.backref('software_request_admins', lazy='dynamic'))
 
     def __str__(self):
         return f'{self.title}'
