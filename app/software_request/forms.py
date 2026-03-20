@@ -6,7 +6,8 @@ from flask_login import current_user
 from wtforms.validators import DataRequired, InputRequired
 
 from app.software_request.models import *
-from wtforms_alchemy import model_form_factory, QuerySelectField
+from wtforms_alchemy import model_form_factory, QuerySelectField, QuerySelectMultipleField
+
 BaseModelForm = model_form_factory(FlaskForm)
 
 
@@ -24,6 +25,8 @@ def create_request_form(detail_id):
         if detail_id:
             room = QuerySelectField('ห้อง', query_factory=lambda: RoomResource.query.order_by(RoomResource.number.asc()),
                                 allow_blank=True, blank_text='กรุณาเลือกห้อง')
+            staffs = QuerySelectMultipleField('ผู้รับผิดชอบ', query_factory=lambda: StaffAccount.get_it_unit(),
+                                              get_label='fullname')
         else:
             file_upload = FileField('File Upload')
             system = QuerySelectField('ระบบที่ต้องการปรับปรุง', query_factory=lambda: SoftwareRequestSystem.query.all(), allow_blank=True,
