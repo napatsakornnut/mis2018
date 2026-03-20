@@ -426,10 +426,20 @@ def create_issue(detail_id=None, issue_id=None):
             if form.status_.data != current_status:
                 if form.status_.data == 'Cancelled':
                     issue.cancelled_at = arrow.now('Asia/Bangkok').datetime
+                    issue.closed_at = None
+                    issue.accepted_at = None
                 elif form.status_.data == 'Closed':
                     issue.closed_at = arrow.now('Asia/Bangkok').datetime
+                    issue.cancelled_at = None
+                    issue.accepted_at = None
                 elif form.status_.data == 'Working':
                     issue.accepted_at = arrow.now('Asia/Bangkok').datetime
+                    issue.closed_at = None
+                    issue.cancelled_at = None
+                else:
+                    issue.accepted_at = None
+                    issue.closed_at = None
+                    issue.cancelled_at = None
 
             db.session.add(issue)
             db.session.commit()
