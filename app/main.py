@@ -851,7 +851,6 @@ from app.software_request.models import *
 admin.add_views(ModelView(SoftwareRequestNumberID, db.session, category='Software Request'))
 admin.add_views(ModelView(SoftwareRequestSystem, db.session, category='Software Request'))
 admin.add_views(ModelView(SoftwareRequestDetail, db.session, category='Software Request'))
-admin.add_views(ModelView(SoftwareRequestAdmin, db.session, category='Software Request'))
 admin.add_views(ModelView(SoftwareRequestTimeline, db.session, category='Software Request'))
 admin.add_views(ModelView(SoftwareIssues, db.session, category='Software Request'))
 
