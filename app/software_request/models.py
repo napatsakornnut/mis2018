@@ -137,6 +137,8 @@ class SoftwareRequestTimeline(db.Model):
     admin = db.relationship(StaffAccount, backref=db.backref('request_timelines'))
     request_id = db.Column('request_id', db.ForeignKey('software_request_details.id'))
     request = db.relationship(SoftwareRequestDetail, backref=db.backref('timelines', cascade='all, delete-orphan'))
+    issue_id = db.Column('issue_id', db.ForeignKey('software_issues.id'))
+    issue = db.relationship('SoftwareIssues', backref=db.backref('timelines', lazy='dynamic'))
 
     def __str__(self):
         return f'{self.phase}: {self.task}'
