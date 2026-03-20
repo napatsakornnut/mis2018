@@ -173,3 +173,14 @@ class SoftwareIssues(db.Model):
             return 'Working'
         else:
             return 'Draft'
+
+    @property
+    def status_color(self):
+        if self.cancelled_at:
+            return 'is-danger'
+        elif self.closed_at:
+            return 'is-dark'
+        elif self.accepted_at:
+            return 'is-success'
+        else:
+            return 'is-info'

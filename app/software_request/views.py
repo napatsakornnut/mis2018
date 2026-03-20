@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 import arrow
 import  pytz
 import requests
@@ -8,7 +9,7 @@ from flask_mail import Message
 from sqlalchemy import or_
 from flask import render_template, redirect, flash, url_for, jsonify, request, make_response, current_app
 from flask_login import login_required, current_user
-from app.roles import admin_permission
+from app.roles import it_permission
 from app.software_request import software_request
 from app.software_request.forms import create_request_form, SoftwareRequestTimelineForm, SoftwareRequestIssueForm
 from app.software_request.models import *
@@ -117,7 +118,7 @@ def get_systems():
 
 
 @software_request.route('/admin/index')
-@admin_permission.require()
+@it_permission.require()
 @login_required
 def admin_index():
     tab = request.args.get('tab')
@@ -183,14 +184,14 @@ def admin_index():
 def get_timelines(tab):
     start = request.args.get('start')
     end = request.args.get('end')
+    print(start, end)
     if start:
         start = parser.isoparse(start)
     if end:
         end = parser.isoparse(end)
 
     all_timelines = []
-    timelines = SoftwareRequestTimeline.query.filter(SoftwareRequestTimeline.start >= start, SoftwareRequestTimeline.estimate <= end)
-
+    timelines = SoftwareRequestTimeline.query.filter(SoftwareRequestTimeline.start <= end, SoftwareRequestTimeline.estimate >= start)
     if tab == 'private':
         timelines = timelines.filter(SoftwareRequestTimeline.admin_id == current_user.id)
 
@@ -200,7 +201,7 @@ def get_timelines(tab):
                 'id': timeline.id,
                 'title': '{} ({}) - {}'.format(timeline.task, timeline.request.title, timeline.admin.fullname),
                 'start': timeline.start.isoformat(),
-                'end': timeline.estimate.isoformat(),
+                'end': (timeline.estimate + timedelta(days=1)).isoformat(),
                 'borderColor': '#aed581' if timeline.status == 'เสร็จสิ้น' else '#b3e5fc',
                 'backgroundColor': '#aed581' if timeline.status == 'เสร็จสิ้น' else '#b3e5fc',
                 'textColor': '#000000',
