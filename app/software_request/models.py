@@ -162,6 +162,8 @@ class SoftwareIssues(db.Model):
     cancelled_at = db.Column('cancelled_at', db.DateTime(timezone=True))
     closed_at = db.Column('closed_at', db.DateTime(timezone=True))
     accepted_at = db.Column('accepted_at', db.DateTime(timezone=True))
+    admin_id = db.Column('admin_id', db.ForeignKey('staff_account.id'))
+    admin = db.relationship(StaffAccount, backref=db.backref('software_request_issues'), foreign_keys=[admin_id])
 
     @property
     def status(self):
