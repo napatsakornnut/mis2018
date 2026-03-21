@@ -247,6 +247,7 @@
                                                 <thead>
                                                     <th>Sequence</th>
                                                     <th>Task</th>
+                                                    <th>Issue</th>
                                                     <th>สถานะ</th>
                                                     <th>Phase</th>
                                                     <th>วันที่เริ่มต้น</th>
@@ -259,6 +260,7 @@
                                                         <tr>
                                                             <td>{{ timeline.sequence }}</td>
                                                             <td>{{ timeline.task }}</td>
+                                                            <td>{{ timeline.issue.issue }}</td>
                                                             <td>
                                                                 <span {% if timeline.status == 'รอดำเนินการ' %}
                                                                         class="tag is-info is-light"
@@ -392,8 +394,8 @@
                                                     </td>
                                                     <td>{{ issue.creator.fullname }}</td>
                                                     <td>{{ issue.created_at|localdatetime }}</td>
-                                                    <td>{{ issue.updater.fullname }}</td>
-                                                    <td>{{ issue.updated_at|localdatetime }}</td>
+                                                    <td>{{ issue.updater.fullname or '' }}</td>
+                                                    <td>{{ issue.updated_at|localdatetime or '' }}</td>
                                                 </tr>
                                             {% endfor %}
                                             </tbody>
