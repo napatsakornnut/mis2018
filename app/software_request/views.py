@@ -11,7 +11,7 @@ from flask import render_template, redirect, flash, url_for, jsonify, request, m
 from flask_login import login_required, current_user
 from app.roles import it_permission
 from app.software_request import software_request
-from app.software_request.forms import create_request_form, SoftwareRequestTimelineForm, SoftwareRequestIssueForm
+from app.software_request.forms import create_request_form,  create_timeline_form, SoftwareRequestIssueForm
 from app.software_request.models import *
 from werkzeug.utils import secure_filename
 from pydrive.auth import ServiceAccountCredentials, GoogleAuth
@@ -268,10 +268,12 @@ def update_request(detail_id):
 def create_timeline(detail_id=None, timeline_id=None):
     tab = request.args.get('tab')
     if detail_id:
+        SoftwareRequestTimelineForm = create_timeline_form(detail_id=detail_id)
         form = SoftwareRequestTimelineForm()
         sequence_no = SoftwareRequestNumberID.get_number('Num', db, software_request='software_request_'+str(detail_id))
     else:
         timeline = SoftwareRequestTimeline.query.get(timeline_id)
+        SoftwareRequestTimelineForm = create_timeline_form(detail_id=timeline.request_id)
         form = SoftwareRequestTimelineForm(obj=timeline)
         status = timeline.status
     if form.validate_on_submit():
@@ -334,6 +336,9 @@ def create_timeline(detail_id=None, timeline_id=None):
             resp = make_response()
             resp.headers['HX-Refresh'] = 'true'
         return resp
+    else:
+        for er in form.errors:
+            flash(er, 'danger')
     return render_template('software_request/modal/create_timeline_modal.html', form=form, tab=tab,
                            detail_id=detail_id, timeline_id=timeline_id)
 
