@@ -62,3 +62,6 @@ class SoftwareRequestIssueForm(ModelForm):
     status_ = SelectField('Status',
                           default='Draft',
                           choices=[(c,c) for c in ('Draft', 'Working', 'Cancelled', 'Closed')])
+    admin = QuerySelectField('ผู้รับผิดชอบ', query_factory=lambda: StaffAccount.get_it_unit(), allow_blank=True,
+                             blank_text='กรุณาเลือกผู้รับผิดชอบ', get_label='fullname',
+                             validators=[InputRequired(message='กรุณาเลือกผู้รับผิดชอบ')])
