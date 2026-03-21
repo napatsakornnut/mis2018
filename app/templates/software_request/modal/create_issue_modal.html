@@ -47,13 +47,22 @@
                     </div>
                 </div>
                 {% endif %}
-                <div class="field">
+                  <div class="field">
                     <label class="label">
                         {{ form.issue.label }}
                         <span class="has-text-danger">*</span>
                     </label>
                     <div class="control">
                         {{ form.issue(class='textarea') }}
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">
+                        {{ form.admin.label }}
+                        <span class="has-text-danger">*</span>
+                    </label>
+                    <div class="control">
+                        {{ form.admin(class='js-example-basic-single') }}
                     </div>
                 </div>
                 <div class="field is-grouped is-grouped-centered" style="margin-top: 1em">
@@ -74,4 +83,9 @@
         htmx.addClass(htmx.find('#issue-modal'), 'animate__fadeOut')
         htmx.removeClass(htmx.find('#issue-modal'), "is-active", 500)
     })
+    $(document).ready(() => {
+        $('.js-example-basic-single').select2({
+            width: '100%',
+        });
+    });
 </script>
