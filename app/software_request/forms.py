@@ -54,7 +54,7 @@ def create_timeline_form(detail_id):
         issue = QuerySelectField('ปํญหาที่พบ', query_factory=lambda: SoftwareIssues.query.filter_by(software_request_detail_id=detail_id).all(), allow_blank=True,
                                  blank_text='', get_label='issue')
         admin = QuerySelectField('ผู้รับผิดชอบ', query_factory=lambda: StaffAccount.get_it_unit(), allow_blank=True,
-                                 blank_text='กรุณาเลือกผู้รับผิดชอบ', get_label='fullname', validators=[InputRequired(message='กรุณาเลือกผู้รับผิดชอบ')])
+                                 blank_text='กรุณาเลือกผู้รับผิดชอบ', get_label='fullname')
     return SoftwareRequestTimelineForm
 
 
@@ -66,6 +66,5 @@ class SoftwareRequestIssueForm(ModelForm):
     status_ = SelectField('Status',
                           default='Draft',
                           choices=[(c,c) for c in ('Draft', 'Working', 'Cancelled', 'Closed')])
-    admin = QuerySelectField('ผู้รับผิดชอบ', query_factory=lambda: StaffAccount.get_it_unit(), allow_blank=True,
-                             blank_text='กรุณาเลือกผู้รับผิดชอบ', get_label='fullname',
-                             validators=[InputRequired(message='กรุณาเลือกผู้รับผิดชอบ')])
+    staff = QuerySelectField('ผู้รับผิดชอบ', query_factory=lambda: StaffAccount.get_it_unit(), allow_blank=True,
+                             blank_text='กรุณาเลือกผู้รับผิดชอบ', get_label='fullname')
