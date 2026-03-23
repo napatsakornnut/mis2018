@@ -184,7 +184,7 @@ def admin_index():
 def get_timelines(tab):
     start = request.args.get('start')
     end = request.args.get('end')
-    print(start, end)
+
     if start:
         start = parser.isoparse(start)
     if end:
@@ -221,6 +221,8 @@ def update_request(detail_id):
     tab = request.args.get('tab')
     detail = SoftwareRequestDetail.query.get(detail_id)
     status = detail.status
+    required_information = detail.required_information
+    suggestion = detail.suggestion
 
     SoftwareRequestDetailForm = create_request_form(detail_id=detail_id)
     form = SoftwareRequestDetailForm(obj=detail)
@@ -239,9 +241,31 @@ def update_request(detail_id):
         detail.status = form.status.data if form.status.data else status
         db.session.add(detail)
         db.session.commit()
+        scheme = 'http' if current_app.debug else 'https'
+        link = url_for("software_request.view_request", detail_id=detail_id, _external=True, _scheme=scheme)
+        if required_information != detail.required_information:
+            title = f'''แจ้งขอข้อมูลที่ต้องการขอเพิ่มเติมในการพัฒนา Software'''
+            message = f'''เรียน คุณ{detail.created_by.fullname}\n\n'''
+            message += f'''ตามที่ท่านได้ดำเนินการขอรับบริการพัฒนา Software สำหรับ{detail.title} นั้น'''
+            message += f'''ทางหน่วยงานไอทีมีความประสงค์ขอข้อมูลเพิ่มเติมเพื่อใช้ประกอบการดำเนินงาน ดังนี้ {detail.required_information}\n'''
+            message += f'''ท่านสามารถดูรายละเอียดเพิ่มเติมได้ที่ลิงก์ด้านล่าง\n'''
+            message += f'''{link}\n\n'''
+            message += f'''ขอบคุณค่ะ\n'''
+            message += f'''ระบบขอรับบริการพัฒนา Software\n'''
+            message += f'''คณะเทคนิคการแพทย์'''
+            send_mail([detail.created_by.email + '@mahidol.ac.th'], title, message)
+        if suggestion != detail.suggestion:
+            title = f'''แจ้งข้อเสนอแนะในการพัฒนา Software'''
+            message = f'''เรียน คุณ{detail.created_by.fullname}\n\n'''
+            message += f'''ตามที่ท่านได้ดำเนินการขอรับบริการพัฒนา Software สำหรับ{detail.title} นั้น'''
+            message += f'''ทางหน่วยงานไอทีมีข้อเสนอแนะเพิ่มเติมเพื่อประกอบการพัฒนาระบบ ดังนี้ {detail.required_information}\n'''
+            message += f'''ท่านสามารถดูรายละเอียดเพิ่มเติมได้ที่ลิงก์ด้านล่าง\n'''
+            message += f'''{link}\n\n'''
+            message += f'''ขอบคุณค่ะ\n'''
+            message += f'''ระบบขอรับบริการพัฒนา Software\n'''
+            message += f'''คณะเทคนิคการแพทย์'''
+            send_mail([detail.created_by.email + '@mahidol.ac.th'], title, message)
         if form.status.data:
-            scheme = 'http' if current_app.debug else 'https'
-            link = url_for("software_request.view_request", detail_id=detail_id, _external=True, _scheme=scheme)
             title = f'''แจ้งอัปเดตสถานะคำร้องขอรับบริการพัฒนา Software'''
             message = f'''เรียน คุณ{detail.created_by.fullname}\n\n'''
             message += f'''{detail.approver.fullname} ได้ทำการอัปเดตสถานะคำร้องขอรับบริการพัฒนา Software ของ{detail.title}เป็น "{detail.status}"\n\n'''
