@@ -2,7 +2,7 @@
     <div class="modal-background"></div>
     <div class="modal-card">
         <header class="modal-card-head">
-            <p class="modal-card-title">
+            <p class="modal-card-title" align="center">
                 {% if detail_id %}
                     Add Issue
                 {% else %}
@@ -58,11 +58,11 @@
                 </div>
                 <div class="field" style="margin-top: 0.5em">
                     <label class="label">
-                        {{ form.admin.label }}
+                        {{ form.staff.label }}
                         <span class="has-text-danger">*</span>
                     </label>
                     <div class="control">
-                        {{ form.admin(class='js-example-basic-single') }}
+                        {{ form.staff(class='js-example-basic-single') }}
                     </div>
                 </div>
                 <div class="field is-grouped is-grouped-centered" style="margin-top:0.5em">
