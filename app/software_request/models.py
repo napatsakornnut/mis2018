@@ -53,7 +53,7 @@ class SoftwareRequestDetail(db.Model):
     description = db.Column('description', db.Text(), info={'label': 'รายละเอียดคำขอ'})
     status = db.Column('status', db.String())
     type = db.Column('type', db.String(), info={'label': 'ประเภทคำขอ',
-                                                'choices': [('None', 'กรุณาเลือกประเภทคำขอ'),
+                                                'choices': [('', 'กรุณาเลือกประเภทคำขอ'),
                                                             ('พัฒนาโปรแกรมใหม่', 'พัฒนาโปรแกรมใหม่'),
                                                             ('ปรับปรุงระบบที่มีอยู่', 'ปรับปรุงระบบที่มีอยู่')]})
     work_process_id = db.Column('work_process_id', db.ForeignKey('db_processes.id'))
