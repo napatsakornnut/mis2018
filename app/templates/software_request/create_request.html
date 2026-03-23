@@ -20,7 +20,7 @@
                                 <span class="has-text-danger">*</span>
                             </label>
                             <div class="select">
-                                {{ form.type() }}
+                                {{ form.type(required=True) }}
                             </div>
                         </div>
                         <div class="field" id="title_field" style="display: none;">
@@ -29,7 +29,7 @@
                                 <span class="has-text-danger">*</span>
                             </label>
                             <div class="control">
-                                {{ form.title(class="input") }}
+                                {{ form.title(class="input", required=True) }}
                             </div>
                         </div>
                         <div class="field" id="process_field" style="display: none;">
@@ -59,7 +59,7 @@
                                 <span class="has-text-danger">*</span>
                             </label>
                             <div class="control">
-                                {{ form.description(class="textarea")}}
+                                {{ form.description(class="textarea", required=True)}}
                             </div>
                         </div>
                         <div class="field" id="file_field">
