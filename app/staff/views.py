@@ -4900,17 +4900,20 @@ def send_holidays_data():
     for rec in Holidays.query.all():
         # The event object is a dict object with a 'summary' key.
         text_color = '#ffffff'
-        bg_color = '#4da6ff'
+        bg_color = '#ff9f1a'
         border_color = '#ffffff'
+        holiday_date = rec.holiday_date.date().isoformat() if rec.holiday_date else None
         records.append({
             'id': rec.id,
-            'start': rec.holiday_date.astimezone(tz).isoformat() if rec.holiday_date else None,
-            'end': rec.holiday_date.astimezone(tz).isoformat() if rec.holiday_date else None,
+            'start': holiday_date,
+            'end': holiday_date,
             'title': u'{}'.format(rec.holiday_name),
             'backgroundColor': bg_color,
             'borderColor': border_color,
             'textColor': text_color,
-            'type': 'login'
+            'type': 'holiday',
+            'allDay': True,
+            'className': ['holiday-event']
         })
     return jsonify(records)
 
