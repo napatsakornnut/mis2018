@@ -42,7 +42,15 @@
                                <label class="label">ผู้ไปอบรม</label>
                             </td>
                             <td>
-                                <p class="is-size-5"><strong>{{ attend.staff.personal_info }}</strong></p>
+                                {% if proposer_names and proposer_names|length > 1 %}
+                                    <ol>
+                                        {% for name in proposer_names %}
+                                            <li>{{ name }}</li>
+                                        {% endfor %}
+                                    </ol>
+                                {% else %}
+                                    <p class="is-size-5"><strong>{{ attend.staff.personal_info }}</strong></p>
+                                {% endif %}
                             </td>
                         </tr>
                         {% if attend.head_account_id %}
@@ -366,7 +374,7 @@
                         },
 				        {
 					        ol: [
-						        'ผู้เสนอขออนุมัติ '+ "{{ seminar_attend.staff.personal_info }}",
+                                'ผู้เสนอขออนุมัติ ' + {{ proposer_list_text|tojson|safe }},
                                 'ประเภท '+"{{ seminar_attend.seminar.topic_type }}",
                                 'หน่วยงานที่จัด '+"{{ seminar_attend.seminar.organize_by }}",
                                 'ข้อมูลการขออนุมัติหัวข้อ '+"{{ seminar_attend.seminar.topic }}"+
