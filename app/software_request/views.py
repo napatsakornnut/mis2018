@@ -472,6 +472,9 @@ def create_issue(detail_id=None, issue_id=None):
 
             db.session.add(issue)
             db.session.commit()
+            issue.software_request_detail.updated_date = arrow.now('Asia/Bangkok').datetime
+            db.session.add(issue)
+            db.session.commit()
         else:
             flash(f'{form.errors}', 'danger')
         resp = make_response()
