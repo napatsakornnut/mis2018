@@ -148,6 +148,7 @@
         $(function () {
             $('#datePicker').daterangepicker({
                 singleDatePicker: true,
+                showDropdowns: true,
                 startDate: moment()
             }, function(start, end, label) {
                 $('#timeline_calendar').data('fullCalendar').gotoDate(start);
