@@ -11,7 +11,7 @@ from flask import render_template, redirect, flash, url_for, jsonify, request, m
 from flask_login import login_required, current_user
 from app.roles import it_permission
 from app.software_request import software_request
-from app.software_request.forms import create_request_form, SoftwareRequestTimelineForm, SoftwareRequestIssueForm
+from app.software_request.forms import create_request_form,  create_timeline_form, SoftwareRequestIssueForm
 from app.software_request.models import *
 from werkzeug.utils import secure_filename
 from pydrive.auth import ServiceAccountCredentials, GoogleAuth
@@ -184,7 +184,7 @@ def admin_index():
 def get_timelines(tab):
     start = request.args.get('start')
     end = request.args.get('end')
-    print(start, end)
+
     if start:
         start = parser.isoparse(start)
     if end:
@@ -221,6 +221,8 @@ def update_request(detail_id):
     tab = request.args.get('tab')
     detail = SoftwareRequestDetail.query.get(detail_id)
     status = detail.status
+    required_information = detail.required_information
+    suggestion = detail.suggestion
 
     SoftwareRequestDetailForm = create_request_form(detail_id=detail_id)
     form = SoftwareRequestDetailForm(obj=detail)
@@ -239,9 +241,31 @@ def update_request(detail_id):
         detail.status = form.status.data if form.status.data else status
         db.session.add(detail)
         db.session.commit()
+        scheme = 'http' if current_app.debug else 'https'
+        link = url_for("software_request.view_request", detail_id=detail_id, _external=True, _scheme=scheme)
+        if required_information != detail.required_information:
+            title = f'''แจ้งขอข้อมูลที่ต้องการขอเพิ่มเติมในการพัฒนา Software'''
+            message = f'''เรียน คุณ{detail.created_by.fullname}\n\n'''
+            message += f'''ตามที่ท่านได้ดำเนินการขอรับบริการพัฒนา Software สำหรับ{detail.title} นั้น'''
+            message += f'''ทางหน่วยงานไอทีมีความประสงค์ขอข้อมูลเพิ่มเติมเพื่อใช้ประกอบการดำเนินงาน ดังนี้ {detail.required_information}\n'''
+            message += f'''ท่านสามารถดูรายละเอียดเพิ่มเติมได้ที่ลิงก์ด้านล่าง\n'''
+            message += f'''{link}\n\n'''
+            message += f'''ขอบคุณค่ะ\n'''
+            message += f'''ระบบขอรับบริการพัฒนา Software\n'''
+            message += f'''คณะเทคนิคการแพทย์'''
+            send_mail([detail.created_by.email + '@mahidol.ac.th'], title, message)
+        if suggestion != detail.suggestion:
+            title = f'''แจ้งข้อเสนอแนะในการพัฒนา Software'''
+            message = f'''เรียน คุณ{detail.created_by.fullname}\n\n'''
+            message += f'''ตามที่ท่านได้ดำเนินการขอรับบริการพัฒนา Software สำหรับ{detail.title} นั้น'''
+            message += f'''ทางหน่วยงานไอทีมีข้อเสนอแนะเพิ่มเติมเพื่อประกอบการพัฒนาระบบ ดังนี้ {detail.required_information}\n'''
+            message += f'''ท่านสามารถดูรายละเอียดเพิ่มเติมได้ที่ลิงก์ด้านล่าง\n'''
+            message += f'''{link}\n\n'''
+            message += f'''ขอบคุณค่ะ\n'''
+            message += f'''ระบบขอรับบริการพัฒนา Software\n'''
+            message += f'''คณะเทคนิคการแพทย์'''
+            send_mail([detail.created_by.email + '@mahidol.ac.th'], title, message)
         if form.status.data:
-            scheme = 'http' if current_app.debug else 'https'
-            link = url_for("software_request.view_request", detail_id=detail_id, _external=True, _scheme=scheme)
             title = f'''แจ้งอัปเดตสถานะคำร้องขอรับบริการพัฒนา Software'''
             message = f'''เรียน คุณ{detail.created_by.fullname}\n\n'''
             message += f'''{detail.approver.fullname} ได้ทำการอัปเดตสถานะคำร้องขอรับบริการพัฒนา Software ของ{detail.title}เป็น "{detail.status}"\n\n'''
@@ -268,10 +292,12 @@ def update_request(detail_id):
 def create_timeline(detail_id=None, timeline_id=None):
     tab = request.args.get('tab')
     if detail_id:
+        SoftwareRequestTimelineForm = create_timeline_form(detail_id=detail_id)
         form = SoftwareRequestTimelineForm()
         sequence_no = SoftwareRequestNumberID.get_number('Num', db, software_request='software_request_'+str(detail_id))
     else:
         timeline = SoftwareRequestTimeline.query.get(timeline_id)
+        SoftwareRequestTimelineForm = create_timeline_form(detail_id=timeline.request_id)
         form = SoftwareRequestTimelineForm(obj=timeline)
         status = timeline.status
     if form.validate_on_submit():
@@ -334,6 +360,9 @@ def create_timeline(detail_id=None, timeline_id=None):
             resp = make_response()
             resp.headers['HX-Refresh'] = 'true'
         return resp
+    else:
+        for er in form.errors:
+            flash(er, 'danger')
     return render_template('software_request/modal/create_timeline_modal.html', form=form, tab=tab,
                            detail_id=detail_id, timeline_id=timeline_id)
 
@@ -426,11 +455,24 @@ def create_issue(detail_id=None, issue_id=None):
             if form.status_.data != current_status:
                 if form.status_.data == 'Cancelled':
                     issue.cancelled_at = arrow.now('Asia/Bangkok').datetime
+                    issue.closed_at = None
+                    issue.accepted_at = None
                 elif form.status_.data == 'Closed':
                     issue.closed_at = arrow.now('Asia/Bangkok').datetime
+                    issue.cancelled_at = None
+                    issue.accepted_at = None
                 elif form.status_.data == 'Working':
                     issue.accepted_at = arrow.now('Asia/Bangkok').datetime
+                    issue.closed_at = None
+                    issue.cancelled_at = None
+                else:
+                    issue.accepted_at = None
+                    issue.closed_at = None
+                    issue.cancelled_at = None
 
+            db.session.add(issue)
+            db.session.commit()
+            issue.software_request_detail.updated_date = arrow.now('Asia/Bangkok').datetime
             db.session.add(issue)
             db.session.commit()
         else:
