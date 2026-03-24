@@ -7,6 +7,10 @@
           media="print">
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <style>
+        .fc-popover .fc-body {
+            max-height: 180px;
+            overflow-y: auto;
+        }
         .room-shell {
             padding-top: 1rem;
         }
@@ -466,6 +470,7 @@
         $(function () {
             $('#datePicker').daterangepicker({
                 singleDatePicker: true,
+                showDropdowns: true,
                 startDate: moment()
             }, function(start, end, label) {
                 $('#room_calendar').data('fullCalendar').gotoDate(start);
