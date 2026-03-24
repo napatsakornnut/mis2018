@@ -199,6 +199,7 @@ def get_timelines(tab):
         if timeline.status != 'ยกเลิกการพัฒนา':
             all_timelines.append({
                 'id': timeline.id,
+                'detail_id': timeline.request_id,
                 'title': '{} ({}) - {}'.format(timeline.task, timeline.request.title, timeline.admin.fullname),
                 'start': timeline.start.isoformat(),
                 'end': (timeline.estimate + timedelta(days=1)).isoformat(),
