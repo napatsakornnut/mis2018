@@ -1,6 +1,7 @@
 import calendar
 import dateutil.parser
 import arrow
+import os
 import pytz
 from datetime import datetime, timedelta
 from dateutil import parser
@@ -25,8 +26,91 @@ from ..staff.models import StaffAccount, StaffGroupDetail
 localtz = pytz.timezone('Asia/Bangkok')
 
 
-def send_mail(recp, title, message):
+def _ics_escape(value):
+    if not value:
+        return ''
+    return str(value).replace('\\', '\\\\').replace(';', r'\;').replace(',', r'\,').replace('\n', r'\n')
+
+
+def _ics_timestamp(dt):
+    return dt.astimezone(pytz.utc).strftime('%Y%m%dT%H%M%SZ')
+
+
+def _ics_param_escape(value):
+    if not value:
+        return ''
+    return str(value).replace('\\', '\\\\').replace(';', r'\;').replace(',', r'\,').replace('"', r'\"')
+
+
+def build_room_event_ics(events, method='REQUEST'):
+    if not events:
+        return None
+
+    timestamp = _ics_timestamp(arrow.now('Asia/Bangkok').datetime)
+    lines = [
+        'BEGIN:VCALENDAR',
+        'PRODID:-//MUMT-MIS//Room Scheduler//EN',
+        'VERSION:2.0',
+        'CALSCALE:GREGORIAN',
+        f'METHOD:{method}',
+    ]
+    system_mail = os.getenv('MAIL_USERNAME') or 'no-reply@mt.mahidol.ac.th'
+
+    for event in events:
+        start_dt = event.start if event.start.tzinfo else localtz.localize(event.start)
+        end_dt = event.end if event.end.tzinfo else localtz.localize(event.end)
+        room_name = f'{event.room.number} {event.room.location}'
+        organizer = event.creator or current_user
+        organizer_email = system_mail
+        organizer_name = _ics_param_escape('MUMT-MIS')
+        description_parts = []
+        if event.note:
+            description_parts.append(event.note)
+        description_parts.append(f'Room: {room_name}')
+        if getattr(organizer, 'fullname', None):
+            description_parts.append(f'Booked by: {organizer.fullname}')
+        description = _ics_escape('\n'.join(description_parts))
+
+        lines.extend([
+            'BEGIN:VEVENT',
+            f'UID:room-event-{event.id}@mt.mahidol.ac.th',
+            f'DTSTAMP:{timestamp}',
+            f'DTSTART:{_ics_timestamp(start_dt)}',
+            f'DTEND:{_ics_timestamp(end_dt)}',
+            f'SUMMARY:{_ics_escape(event.title)}',
+            f'LOCATION:{_ics_escape(room_name)}',
+            f'DESCRIPTION:{description}',
+            'STATUS:CONFIRMED',
+            'TRANSP:OPAQUE',
+            'SEQUENCE:0',
+            f'ORGANIZER;CN={organizer_name}:MAILTO:{organizer_email}',
+        ])
+        attendees = {}
+        for participant in event.participants or []:
+            if not getattr(participant, 'email', None):
+                continue
+            attendee_email = f'{participant.email}@mahidol.ac.th'
+            attendees[attendee_email.lower()] = _ics_param_escape(getattr(participant, 'fullname', participant.email))
+
+        for attendee_email, attendee_name in attendees.items():
+            lines.append(
+                f'ATTENDEE;CN={attendee_name};CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:MAILTO:{attendee_email}'
+            )
+        lines.append('END:VEVENT')
+
+    lines.append('END:VCALENDAR')
+    return '\r\n'.join(lines).encode('utf-8')
+
+
+def send_mail(recp, title, message, attachments=None):
     message = Message(subject=title, body=message, recipients=recp)
+    for attachment in attachments or []:
+        message.attach(
+            filename=attachment['filename'],
+            data=attachment['data'],
+            content_type=attachment['content_type'],
+            headers=attachment.get('headers'),
+        )
     mail.send(message)
 
 
@@ -49,6 +133,26 @@ def create_event(startdatetime, enddatetime, repeat_end, master_id, room_id, for
     db.session.add(event)
     db.session.commit()
     return event
+
+
+def _collect_booking_series(event):
+    master_id = event.master_id or event.id
+    events = RoomEvent.query.filter(
+        or_(RoomEvent.master_id == master_id, RoomEvent.id == master_id)
+    ).order_by(RoomEvent.start).all()
+    return events or [event]
+
+
+def _build_room_event_attachment(event):
+    ics_data = build_room_event_ics(_collect_booking_series(event))
+    if not ics_data:
+        return []
+    return [{
+        'filename': f'room-booking-{event.id}.ics',
+        'data': ics_data,
+        'content_type': 'text/calendar; charset=utf-8; method=REQUEST',
+        'headers': [('Content-Class', 'urn:content-classes:calendarmessage')],
+    }]
 
 @room.route('/api/iocodes')
 @login_required
@@ -363,7 +467,12 @@ def edit_detail(event_id):
             message += f' ณ ห้อง {event.room.number} {event.room.location}'
             message += f'\n\nขอความอนุเคราะห์เข้าร่วมในวันและเวลาดังกล่าว'
             if not current_app.debug:
-                send_mail(participant_emails, title, message)
+                send_mail(
+                    participant_emails,
+                    title,
+                    message,
+                    attachments=_build_room_event_attachment(event),
+                )
             else:
                 print(message)
         msg = f'{event.creator.fullname} ได้แก้ไขการจองห้อง {event.room} สำหรับ {event.title} เวลา {event_start.astimezone(localtz).strftime("%d/%m/%Y %H:%M")} - {event_end.astimezone(localtz).strftime("%d/%m/%Y %H:%M")}.'
@@ -525,7 +634,12 @@ def room_reserve(room_id):
                 message += f' ณ ห้อง {room.number} {room.location}'
                 message += f'\n\nขอความอนุเคราะห์เข้าร่วมในวันและเวลาดังกล่าว'
                 if not current_app.debug:
-                    send_mail(participant_emails, title, message)
+                    send_mail(
+                        participant_emails,
+                        title,
+                        message,
+                        attachments=_build_room_event_attachment(new_event),
+                    )
                 else:
                     print(message)
             if event_times:
