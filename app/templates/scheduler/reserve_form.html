@@ -270,13 +270,14 @@
                                 </div>
                                 <div class="reserve-field-card">
                                     <label class="label">{{ form.booking.label.text }}</label>
-                                    <div class="select is-fullwidth">
+                                    <div class="select is-fullwidth" id="booking-select-container">
                                         {{ form.booking() }}
                                     </div>
                                 </div>
                                 <div class="reserve-field-card">
                                     <label class="label">{{ form.repeat_end.label.text }}</label>
                                     {{ form.repeat_end(class='input', type='text', placeholder='เลือกวันที่สิ้นสุดการจองซ้ำ') }}
+                                    <p class="reserve-help is-danger">กรุณาระบุรอบการจองด้วย</p>
                                 </div>
                                 <div class="reserve-field-card">
                                     <label class="label">ตรวจสอบการใช้งานและสถานะ</label>
@@ -490,13 +491,43 @@
                     cancelLabel: 'Clear'
                 }
             });
+
+            let setBookingRepeat = function () {
+                let repeatEnd = $('input[name="repeat_end"]')
+                let booking = $('select[name="booking"]')
+                let bookingContainer = $('#booking-select-container')
+
+                if (repeatEnd.val() || booking.val()) {
+                    booking.prop('disabled', false)
+                    booking.prop('required', true)
+                    bookingContainer.addClass('is-danger')
+                    repeatEnd.prop('required', true)
+                    repeatEnd.addClass('is-danger')
+                } else {
+                    booking.prop('disabled', true)
+                    booking.prop('required', false)
+                    bookingContainer.removeClass('is-danger')
+                    booking.val('')
+                    repeatEnd.prop('required', false)
+                    repeatEnd.removeClass('is-danger')
+                    repeatEnd.val('')
+
+                }
+            }
+
             $('input[name="repeat_end"]').on('apply.daterangepicker', function (ev, picker) {
                 $(this).val(picker.startDate.format(DATE_FORMAT));
+                $(this).trigger('change')
             });
 
             $('input[name="repeat_end"]').on('cancel.daterangepicker', function (ev, picker) {
                 $(this).val('');
+                $(this).trigger('change')
             });
+
+            $('input[name="repeat_end"]').change(function () {
+                setBookingRepeat()
+            })
 
             $('input[name="start"]').change(function () {
                 let repeatEndValue = $('input[name="repeat_end"]').val()
@@ -528,6 +559,25 @@
                 clearAvailabilityStatus('#' + $('input[name="start"]').attr('id'))
                 triggerAvailabilityCheck()
             })
+        });
+    </script>
+    <script>
+         function triggerRepeatCheck() {
+             let booking = $('select[name="booking"]')
+             let repeatEnd = $('input[name="repeat_end"]')
+             let shouldRequire = Boolean(booking.val()) || Boolean(repeatEnd.val())
+             let bookingSelect = booking.closest('.select')
+
+             booking.prop('disabled', !shouldRequire)
+             booking.prop('required', shouldRequire)
+             repeatEnd.prop('required', shouldRequire)
+             bookingSelect.toggleClass('is-danger', shouldRequire)
+             repeatEnd.toggleClass('is-danger', shouldRequire)
+         }
+        $(document).ready(function () {
+            triggerRepeatCheck()
+            $(document).on('input change', 'input[name="repeat_end"]', triggerRepeatCheck)
+            $(document).on('change', 'select[name="booking"]', triggerRepeatCheck)
         });
     </script>
 {% endblock %}
