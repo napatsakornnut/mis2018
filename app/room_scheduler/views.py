@@ -373,12 +373,12 @@ def edit_detail(event_id):
             day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
             current_date = arrow.get(form.start.data, 'Asia/Bangkok').shift(days=day)
             while current_date.date() <= repeat_end:
-                if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
-                    current_startdatetime = current_date.datetime
-                    current_enddatetime = current_date.shift(hours=hour).datetime
-                    event_overlaps = get_overlaps(event.room_id, current_startdatetime, current_enddatetime)
-                    if not event_overlaps:
-                        create_event(current_startdatetime, current_enddatetime, repeat_end, master_id, event.room_id, form)
+                # if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
+                current_startdatetime = current_date.datetime
+                current_enddatetime = current_date.shift(hours=hour).datetime
+                event_overlaps = get_overlaps(event.room_id, current_startdatetime, current_enddatetime)
+                if not event_overlaps:
+                    create_event(current_startdatetime, current_enddatetime, repeat_end, master_id, event.room_id, form)
                 current_date = current_date.shift(days=day)
         elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
             flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
@@ -455,9 +455,6 @@ def edit_detail(event_id):
         else:
             print(msg, event.room.coordinator)
         flash(u'อัพเดตรายการเรียบร้อย', 'success')
-        # if row_messages:
-        #     for msg in row_messages:
-        #         flash(msg["message"], msg["type"])
         return redirect(url_for('room.index'))
     else:
         for field, error in form.errors.items():
@@ -537,12 +534,12 @@ def room_reserve(room_id):
                 day = 7 if form.booking.data == 'ทุกสัปดาห์' else 1
                 current_date = arrow.get(form.start.data, 'Asia/Bangkok').shift(days=day)
                 while current_date.date() <= repeat_end:
-                    if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
-                        current_startdatetime = current_date.datetime
-                        current_enddatetime = current_date.shift(hours=hour).datetime
-                        event_overlaps = get_overlaps(room_id, current_startdatetime, current_enddatetime)
-                        if not event_overlaps:
-                            create_event(current_startdatetime, current_enddatetime, repeat_end, new_event.id, room_id, form)
+                    # if calendar.weekday(current_date.year, current_date.month, current_date.day) < 5:
+                    current_startdatetime = current_date.datetime
+                    current_enddatetime = current_date.shift(hours=hour).datetime
+                    event_overlaps = get_overlaps(room_id, current_startdatetime, current_enddatetime)
+                    if not event_overlaps:
+                        create_event(current_startdatetime, current_enddatetime, repeat_end, new_event.id, room_id, form)
                     current_date = current_date.shift(days=day)
             elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
                 flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
@@ -599,9 +596,6 @@ def room_reserve(room_id):
             else:
                 print(msg, room.coordinators, new_event.note)
             flash(u'บันทึกการจองห้องเรียบร้อยแล้ว', 'success')
-            # if row_messages:
-            #     for msg in row_messages:
-            #         flash(msg["message"], msg["type"])
             return redirect(url_for('room.show_event_detail', event_id=new_event.id))
     else:
         for field, error in form.errors.items():
