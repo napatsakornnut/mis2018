@@ -32,7 +32,7 @@
             </ul>
         </nav>
         <h1 class="title">รายการครุภัณฑ์</h1>
-        <table class="table">
+        <table id='procurements' class="table">
             <thead>
                 <th>Inventory Number/ERP</th>
                 <th>Procurement No</th>
@@ -64,3 +64,11 @@
         </table>
     </section>
 {% endblock page_content %}
+{% block scripts %}
+    {{ super() }}
+    <script>
+        $(document).ready(function () {
+            $('#procurements').DataTable({})
+        });
+    </script>
+{% endblock %}
