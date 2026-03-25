@@ -380,10 +380,10 @@ def edit_detail(event_id):
                 if not event_overlaps:
                     create_event(current_startdatetime, current_enddatetime, repeat_end, master_id, event.room_id, form)
                 current_date = current_date.shift(days=day)
-        elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
-            flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
-            return render_template('scheduler/reserve_form.html', event=event, form=form, room=event.room,
-                                   start=start, end=end, complaints=complaints, repeat_end=repeat_end)
+        # elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
+        #     flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
+        #     return render_template('scheduler/reserve_form.html', event=event, form=form, room=event.room,
+        #                            start=start, end=end, complaints=complaints, repeat_end=repeat_end)
         else:
             db.session.commit()
         # if event.master_id or event.secondary:
@@ -541,9 +541,9 @@ def room_reserve(room_id):
                     if not event_overlaps:
                         create_event(current_startdatetime, current_enddatetime, repeat_end, new_event.id, room_id, form)
                     current_date = current_date.shift(days=day)
-            elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
-                flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
-                return render_template('scheduler/reserve_form.html', room=room, complaints=complaints, form=form)
+            # elif (form.booking.data == None and form.repeat_end.data) or (form.booking.data and form.repeat_end.data == None):
+            #     flash('กรุณาดำเนินการเลือกประเภทการจองซ้ำ และวันที่สิ้นสุดการจองซ้ำ', 'danger')
+            #     return render_template('scheduler/reserve_form.html', room=room, complaints=complaints, form=form)
             else:
                 db.session.commit()
             # TODO: alert by Line for the same-day booking
