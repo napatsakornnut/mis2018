@@ -275,18 +275,9 @@
                                                             <td>{{ timeline.task }}</td>
                                                             <td>{{ timeline.issue.issue }}</td>
                                                             <td>
-                                                                    <span {% if timeline.status == 'รอดำเนินการ' %}
-                                                                        class="tag is-info is-light"
-                                                                    {% elif timeline.status == 'กำลังดำเนินการ' %}
-                                                                        class="tag is-warning is-light"
-                                                                    {% elif timeline.status == 'เสร็จสิ้น' %}
-                                                                        class="tag is-success is-light"
-                                                                    {% else %}
-                                                                        class="tag is-danger is-light"
-                                                                    {% endif %}
-                                                                    >
-                                                                            {{ timeline.status }}
-                                                                    </span>
+                                                                <span class="tag {{ timeline.status_color }} is-light">
+                                                                    {{ timeline.status }}
+                                                                </span>
                                                             </td>
                                                             <td>{{ timeline.phase }}</td>
                                                             <td>{{ timeline.start.strftime('%d/%m/%Y') }}</td>

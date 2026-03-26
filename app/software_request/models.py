@@ -152,6 +152,15 @@ class SoftwareRequestTimeline(db.Model):
     def __str__(self):
         return f'{self.phase}: {self.task}'
 
+    @property
+    def status_color(self):
+        if self.status == 'เสร็จสิ้น':
+            return 'is-success'
+        elif self.status == 'รอดำเนินการ':
+            return 'is-info'
+        else:
+            return 'is-danger'
+
 
 class SoftwareIssues(db.Model):
     __tablename__ = 'software_issues'
