@@ -139,7 +139,7 @@ class RoomEvent(db.Model):
     participants = db.relationship('StaffAccount', secondary=event_participant_assoc,
                                    backref=db.backref('events', lazy='dynamic'))
     notify_participants = db.Column('notify_participants', db.Boolean(), default=True)
-    is_repeat_booking = db.Column('is_repeat_booking', db.Boolean(), default=False)
+    is_repeat_booking = db.Column('is_repeat_booking', db.Boolean(), default=False, info={'label': 'ทำการจองซ้ำ'})
     course_session_id = db.Column('course_session_id', db.ForeignKey('eduqa_course_sessions.id'))
     course_session = db.relationship(EduQACourseSession, backref=db.backref('events', cascade='all, delete-orphan'))
     meeting_event_id = db.Column('meeting_event_id', db.ForeignKey('meeting_events.id'))
