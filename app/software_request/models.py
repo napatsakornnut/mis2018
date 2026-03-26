@@ -6,6 +6,13 @@ from app.room_scheduler.models import RoomResource
 from app.staff.models import StaffAccount
 
 
+software_request_admin_assoc = db.Table('software_request_admin_assoc',
+                                          db.Column('id', db.Integer, autoincrement=True, primary_key=True),
+                                          db.Column('staff_id', db.Integer, db.ForeignKey('staff_account.id')),
+                                          db.Column('request_id', db.Integer, db.ForeignKey('software_request_details.id')),
+                                          )
+
+
 class SoftwareRequestNumberID(db.Model):
     __tablename__ = 'software_request_number_ids'
     id = db.Column('id', db.Integer, autoincrement=True, primary_key=True)
@@ -46,7 +53,7 @@ class SoftwareRequestDetail(db.Model):
     description = db.Column('description', db.Text(), info={'label': 'รายละเอียดคำขอ'})
     status = db.Column('status', db.String())
     type = db.Column('type', db.String(), info={'label': 'ประเภทคำขอ',
-                                                'choices': [('None', 'กรุณาเลือกประเภทคำขอ'),
+                                                'choices': [('', 'กรุณาเลือกประเภทคำขอ'),
                                                             ('พัฒนาโปรแกรมใหม่', 'พัฒนาโปรแกรมใหม่'),
                                                             ('ปรับปรุงระบบที่มีอยู่', 'ปรับปรุงระบบที่มีอยู่')]})
     work_process_id = db.Column('work_process_id', db.ForeignKey('db_processes.id'))
@@ -86,6 +93,8 @@ class SoftwareRequestDetail(db.Model):
     approver = db.relationship(StaffAccount, backref=db.backref('approve_requests'), foreign_keys=[approver_id])
     created_id = db.Column('created_id', db.ForeignKey('staff_account.id'))
     created_by = db.relationship(StaffAccount, backref=db.backref('created_requests'), foreign_keys=[created_id])
+    staffs = db.relationship(StaffAccount, secondary=software_request_admin_assoc,
+                             backref=db.backref('software_request_admins', lazy='dynamic'))
 
     def __str__(self):
         return f'{self.title}'
@@ -137,9 +146,20 @@ class SoftwareRequestTimeline(db.Model):
     admin = db.relationship(StaffAccount, backref=db.backref('request_timelines'))
     request_id = db.Column('request_id', db.ForeignKey('software_request_details.id'))
     request = db.relationship(SoftwareRequestDetail, backref=db.backref('timelines', cascade='all, delete-orphan'))
+    issue_id = db.Column('issue_id', db.ForeignKey('software_issues.id'))
+    issue = db.relationship('SoftwareIssues', backref=db.backref('timelines', lazy='dynamic'))
 
     def __str__(self):
         return f'{self.phase}: {self.task}'
+
+    @property
+    def status_color(self):
+        if self.status == 'เสร็จสิ้น':
+            return 'is-success'
+        elif self.status == 'รอดำเนินการ':
+            return 'is-info'
+        else:
+            return 'is-danger'
 
 
 class SoftwareIssues(db.Model):
@@ -162,6 +182,8 @@ class SoftwareIssues(db.Model):
     cancelled_at = db.Column('cancelled_at', db.DateTime(timezone=True))
     closed_at = db.Column('closed_at', db.DateTime(timezone=True))
     accepted_at = db.Column('accepted_at', db.DateTime(timezone=True))
+    staff_id = db.Column('staff_id', db.ForeignKey('staff_account.id'))
+    staff = db.relationship(StaffAccount, backref=db.backref('software_request_issues'), foreign_keys=[staff_id])
 
     @property
     def status(self):
@@ -173,3 +195,14 @@ class SoftwareIssues(db.Model):
             return 'Working'
         else:
             return 'Draft'
+
+    @property
+    def status_color(self):
+        if self.cancelled_at:
+            return 'is-danger'
+        elif self.closed_at:
+            return 'is-dark'
+        elif self.accepted_at:
+            return 'is-success'
+        else:
+            return 'is-info'

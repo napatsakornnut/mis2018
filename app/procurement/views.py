@@ -2071,10 +2071,10 @@ def search_all_procurement():
 @login_required
 def procurement_item():
     if request.method == 'GET':
-        procurements = ProcurementDetail.query.all()
+        procurements = ProcurementDetail.query.yield_per(200)
     else:
         erp_code = request.form.get('erp_code', None)
-        if erp_code:
+        if len(erp_code) > 4:
             procurements = ProcurementDetail.query.filter(ProcurementDetail.erp_code.like('%{}%'.format(erp_code)))
         else:
             procurements = []

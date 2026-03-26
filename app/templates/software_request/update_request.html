@@ -161,6 +161,18 @@
                         </div>
                         <div class="field is-horizontal">
                             <div class="field-label">
+                                <label class="label">{{ form.staffs.label }}</label>
+                            </div>
+                            <div class="field-body">
+                                <div class="field">
+                                    <div class="control">
+                                        {{ form.staffs(class='js-example-basic-multiple', multiple='multiple') }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field is-horizontal">
+                            <div class="field-label">
                                 <label class="label">ปรับสถานะ</label>
                             </div>
                             <div class="field-body">
@@ -223,6 +235,20 @@
                                 </div>
                             </div>
                         </div>
+                        {% if detail.status == 'ยกเลิก' %}
+                            <div class="field is-horizontal">
+                                <div class="field-label">
+                                    <label class="label">สาเหตุการยกเลิกคำขอ</label>
+                                </div>
+                                <div class="field-body">
+                                    <div class="field">
+                                        <div class="control">
+                                            {{ form.reason(class='textarea') }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
                         {% if detail.status == 'อนุมัติ' or detail.status == 'ยกเลิก' or detail.status == 'เสร็จสิ้น'%}
                             <div class="field is-horizontal">
                                 <div class="field-label">
@@ -235,6 +261,7 @@
                                                 <thead>
                                                     <th>Sequence</th>
                                                     <th>Task</th>
+                                                    <th>Issue</th>
                                                     <th>สถานะ</th>
                                                     <th>Phase</th>
                                                     <th>วันที่เริ่มต้น</th>
@@ -247,17 +274,9 @@
                                                         <tr>
                                                             <td>{{ timeline.sequence }}</td>
                                                             <td>{{ timeline.task }}</td>
+                                                            <td>{{ timeline.issue.issue }}</td>
                                                             <td>
-                                                                <span {% if timeline.status == 'รอดำเนินการ' %}
-                                                                        class="tag is-info is-light"
-                                                                {% elif timeline.status == 'กำลังดำเนินการ' %}
-                                                                    class="tag is-warning is-light"
-                                                                {% elif timeline.status == 'เสร็จสิ้น' %}
-                                                                    class="tag is-success is-light"
-                                                                {% else %}
-                                                                    class="tag is-danger is-light"
-                                                                {% endif %}
-                                                                >
+                                                                <span class="tag {{ timeline.status_color }} is-light">
                                                                     {{ timeline.status }}
                                                                 </span>
                                                             </td>
@@ -312,20 +331,6 @@
                                 </div>
                             </div>
                         {% endif %}
-                        {% if detail.status == 'ยกเลิก' %}
-                            <div class="field is-horizontal">
-                                <div class="field-label">
-                                    <label class="label">สาเหตุการยกเลิกคำขอ</label>
-                                </div>
-                                <div class="field-body">
-                                    <div class="field">
-                                        <div class="control">
-                                            {{ form.reason(class='textarea') }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        {% endif %}
                         <div class="field is-horizontal">
                             <div class="field-label">
                                 <label class="label">Issues</label>
@@ -369,7 +374,7 @@
                                                     </td>
                                                     <td>{{ issue.issue }}</td>
                                                     <td>
-                                                        {{ issue.status }}
+                                                        <span class="tag {{ issue.status_color }}">{{ issue.status }}</span>
                                                         <a hx-swap="innerHTML"
                                                            hx-target="#issue_form"
                                                            hx-get="{{ url_for('software_request.create_issue', issue_id=issue.id) }}">
@@ -380,8 +385,8 @@
                                                     </td>
                                                     <td>{{ issue.creator.fullname }}</td>
                                                     <td>{{ issue.created_at|localdatetime }}</td>
-                                                    <td>{{ issue.updater.fullname }}</td>
-                                                    <td>{{ issue.updated_at|localdatetime }}</td>
+                                                    <td>{{ issue.updater.fullname or '' }}</td>
+                                                    <td>{{ issue.updated_at|localdatetime or '' }}</td>
                                                 </tr>
                                             {% endfor %}
                                             </tbody>
@@ -402,18 +407,20 @@
                                 </div>
                             </div>
                         </div>
-                        {% if detail.approver_id %}
-                            <div class="field is-horizontal">
-                                <div class="field-label">
-                                    <label class="label">Update ล่าสุด</label>
-                                </div>
-                                <div class="field-body">
-                                    <div class="field">
+                        <div class="field is-horizontal">
+                            <div class="field-label">
+                                <label class="label">Update ล่าสุด</label>
+                            </div>
+                            <div class="field-body">
+                                <div class="field">
+                                    {% if detail.updated_date %}
                                         {{ detail.updated_date|localdatetime }} โดย {{ detail.approver.fullname }}
-                                    </div>
+                                    {% else %}
+                                        ยังไม่มีการอัพเดต
+                                    {% endif %}
                                 </div>
                             </div>
-                        {% endif %}
+                        </div>
                         <div class="field is-grouped is-grouped-centered">
                             <div class="control">
                                 <a href="{{ url_for('software_request.admin_index', tab=tab) }}"
@@ -452,6 +459,10 @@
             }
         }
         $(document).ready(function () {
+            $('.js-example-basic-multiple').select2({
+                width: '100%',
+                placeholder: 'กรุณาเลือกผู้รับผิดชอบ'
+            });
             moment.locale('th');
             $('input[name="appointment_date"]').daterangepicker({
                 singleDatePicker: true,
