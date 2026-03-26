@@ -115,9 +115,8 @@ class RoomEvent(db.Model):
                                                       })
     iocode_id = db.Column('iocode_id', db.ForeignKey('iocodes.id'))
     occupancy = db.Column('occupancy', db.Integer())
-    # number of sets of food/refreshment requested
     refreshment = db.Column('refreshment', db.Integer(), default=0)
-    request = db.Column('request', db.Text(), info={'label': 'ความต้องการเพิ่มเติม'})  # comma separated list of things
+    request = db.Column('request', db.Text(), info={'label': 'ความต้องการเพิ่มเติม'})
     approved = db.Column('approved', db.Boolean(), default=True)
     created_at = db.Column('created_at', db.DateTime(timezone=True), server_default=func.now())
     created_by = db.Column('created_by', db.ForeignKey('staff_account.id'))
@@ -140,6 +139,7 @@ class RoomEvent(db.Model):
     participants = db.relationship('StaffAccount', secondary=event_participant_assoc,
                                    backref=db.backref('events', lazy='dynamic'))
     notify_participants = db.Column('notify_participants', db.Boolean(), default=True)
+    is_repeat_booking = db.Column('is_repeat_booking', db.Boolean(), default=False)
     course_session_id = db.Column('course_session_id', db.ForeignKey('eduqa_course_sessions.id'))
     course_session = db.relationship(EduQACourseSession, backref=db.backref('events', cascade='all, delete-orphan'))
     meeting_event_id = db.Column('meeting_event_id', db.ForeignKey('meeting_events.id'))
