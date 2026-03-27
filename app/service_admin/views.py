@@ -134,7 +134,7 @@ def walk_form_fields(field, quote_column_names, cols=set(), keys=[], values='', 
     else:
         clean_field_name = re.sub(r'_\d+$', '', field.name)
         if clean_field_name in quote_column_names:
-            if field.name != 'csrf_token' or field.name != 'submit':
+            if field.name not in ('csrf_token', 'submit'):
                 if isinstance(field.data, list):
                     for item in field.data:
                         keys.append((field.name, values + str(item)))
@@ -2963,8 +2963,8 @@ def create_customer_detail(request_id):
                 service_request.receive_phone_number = quotation_address.phone_number
                 db.session.add(service_request)
                 remark = quotation_address.remark if quotation_address.remark else None
-                if current_user.customer_info.addresses:
-                    for address in current_user.customer_info.addresses:
+                if customer.addresses:
+                    for address in customer.addresses:
                         if customer.has_document_address():
                             if address.address_type == 'document':
                                 address.name = quotation_address.name

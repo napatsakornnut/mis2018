@@ -268,19 +268,27 @@
                                         {{ form.hour(required=true) }}
                                     </div>
                                 </div>
-                                <div class="reserve-field-card">
+                                <div class="reserve-field-card is-full">
+                                    <label class="checkbox">
+                                        {{ form.is_repeat_booking() }}
+                                        {{ form.is_repeat_booking.label }}
+                                    </label>
+                                </div>
+                                <div id="booking_field" class="reserve-field-card">
                                     <label class="label">{{ form.booking.label.text }}</label>
-                                    <div class="select is-fullwidth">
+                                    <div class="select is-danger is-fullwidth">
                                         {{ form.booking() }}
                                     </div>
                                 </div>
-                                <div class="reserve-field-card">
+                                <div  id="repeat_end_field" class="reserve-field-card">
                                     <label class="label">{{ form.repeat_end.label.text }}</label>
-                                    {{ form.repeat_end(class='input', type='text', placeholder='เลือกวันที่สิ้นสุดการจองซ้ำ') }}
+                                    {{ form.repeat_end(class='input is-danger', type='text', placeholder='เลือกวันที่สิ้นสุดการจองซ้ำ') }}
+                                    <p class="reserve-help is-danger">กรุณาระบุรอบการจองด้วย</p>
                                 </div>
                                 <div class="reserve-field-card">
                                     <label class="label">ตรวจสอบการใช้งานและสถานะ</label>
-                                    <button type="button" class="button is-light is-rounded" onclick="checkAvailability()">
+                                    <button type="button" class="button is-light is-rounded"
+                                            onclick="checkAvailability()">
                                         <span class="icon">
                                             <i class="fa-solid fa-magnifying-glass"></i>
                                         </span>
@@ -325,13 +333,15 @@
                                 <div class="reserve-field-card">
                                     <label class="label">กลุ่ม</label>
                                     <div class="control">
-                                        <select class="js-example-basic-multiple" name="groups" multiple="multiple"></select>
+                                        <select class="js-example-basic-multiple" name="groups"
+                                                multiple="multiple"></select>
                                     </div>
                                     <p class="reserve-help">รายชื่อกลุ่มคณะกรรมการที่ต้องการเพิ่มเป็นผู้เข้าร่วม</p>
                                 </div>
                                 <div class="reserve-field-card">
                                     <label class="label">จัดการกลุ่ม</label>
-                                    <a href="{{ url_for('staff.create_group_detail') }}" target="_blank" class="button is-info is-rounded">
+                                    <a href="{{ url_for('staff.create_group_detail') }}" target="_blank"
+                                       class="button is-info is-rounded">
                                         <span class="icon">
                                             <i class="fa-solid fa-plus"></i>
                                         </span>
@@ -374,7 +384,9 @@
                                 <div class="reserve-field-card">
                                     <label class="label">ความต้องการเพิ่มเติม</label>
                                     {{ form.note(class="textarea", placeholder="หากมีอาหารว่าง กรุณาส่งรายชื่อผู้เข้าร่วมตามจำนวนอาหารแก่หน่วยอาคารฯ หลังจบกิจกรรม") }}
-                                    <p class="reserve-help is-danger">หากมีอาหารว่าง กรุณาส่งรายชื่อผู้เข้าร่วมตามจำนวนอาหารแก่หน่วยอาคารฯ หลังจบกิจกรรม (โทร 2116)</p>
+                                    <p class="reserve-help is-danger">หากมีอาหารว่าง
+                                        กรุณาส่งรายชื่อผู้เข้าร่วมตามจำนวนอาหารแก่หน่วยอาคารฯ หลังจบกิจกรรม (โทร
+                                        2116)</p>
                                 </div>
                             </div>
                         </div>
@@ -401,7 +413,8 @@
     {{ super() }}
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/moment@2.29.4/min/moment-with-locales.min.js"></script>
+    <script type="text/javascript"
+            src="https://cdn.jsdelivr.net/npm/moment@2.29.4/min/moment-with-locales.min.js"></script>
     <script type="text/javascript">
         const DATETIME_FORMAT = 'DD-MM-YYYY HH:mm:ss'
         const DATE_FORMAT = 'YYYY-MM-DD'
@@ -490,6 +503,7 @@
                     cancelLabel: 'Clear'
                 }
             });
+
             $('input[name="repeat_end"]').on('apply.daterangepicker', function (ev, picker) {
                 $(this).val(picker.startDate.format(DATE_FORMAT));
             });
@@ -528,6 +542,34 @@
                 clearAvailabilityStatus('#' + $('input[name="start"]').attr('id'))
                 triggerAvailabilityCheck()
             })
+        });
+    </script>
+    <script>
+        $(document).ready(function () {
+            function showRepeatField() {
+                var isRepeatBooking = document.getElementById('is_repeat_booking');
+                var bookingField = document.getElementById('booking_field');
+                var repeatEndField = document.getElementById('repeat_end_field');
+                var booking = document.querySelector('select[name="booking"]');
+                var repeatEnd = document.querySelector('input[name="repeat_end"]');
+
+                if (isRepeatBooking.checked) {
+                    bookingField.style.display = 'block';
+                    booking.required = true;
+                    repeatEndField.style.display = 'block';
+                    repeatEnd.required = true;
+
+                } else {
+                    bookingField.style.display = 'none';
+                    booking.required = false;
+                    repeatEndField.style.display = 'none';
+                    repeatEnd.required = false;
+                }
+            }
+
+            showRepeatField();
+            document.getElementById('is_repeat_booking').addEventListener('change', showRepeatField);
+
         });
     </script>
 {% endblock %}

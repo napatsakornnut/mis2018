@@ -1,7 +1,6 @@
 <nav class="navbar is-warning">
     <div class="container">
         <div class="navbar-brand">
-
             <p class="navbar-item">{{ position }}</p>
             <span class="navbar-burger burger" data-target="navbarMenuHeroA">
                 <span></span>
@@ -11,7 +10,15 @@
         </div>
         <div id="navbarMenuHeroA" class="navbar-menu">
             <div class="navbar-end">
-                <a class="navbar-item" href="/">
+                <a class="navbar-item"
+                   {% if central_admin %}
+                        href="{{ url_for('service_admin.invoice_index_for_central_admin', menu='invoice', tab='all') }}"
+                   {% elif assistant %}
+                        href="{{ url_for('service_admin.quotation_index', menu='quotation', tab='all') }}"
+                   {% else %}
+                        href="{{ url_for('service_admin.request_index', menu='request') }}"
+                   {% endif %}
+                >
                     <span class="icon">
                         <i class="fas fa-home"></i>
                     </span>
@@ -111,7 +118,7 @@
                         </span>
                     </a>
                 {% endif %}
-                <a class="navbar-item" href="{{ url_for('service_admin.request_index', menu='request') }}">
+                <a class="navbar-item" href="/">
                     <span class="icon">
                         <i class="far fa-times-circle"></i>
                     </span>
