@@ -24,6 +24,7 @@ with app.app_context():
         head_finance_role = Role.query.filter_by(role_need='head_finance', action_need=None, resource_id=None).first()
         manager_role = Role.query.filter_by(role_need='manager', action_need=None, resource_id=None).first()
         secretary_role = Role.query.filter_by(role_need='secretary', action_need=None, resource_id=None).first()
+        event_staff = Role.query.filter_by(role_need='event_staff', action_need=None, resource_id=None).first()
         center_standardization_product_validation_role = Role.query.filter_by(role_need='center_standardization_product_validation',
                                                                               action_need=None, resource_id=None).first()
         continuing_edu_admin_role = Role.query.filter_by(role_need='continuing_edu_admin', 
@@ -42,6 +43,7 @@ with app.app_context():
         head_finance_role = None
         manager_role = None
         secretary_role = None
+        event_staff =  None
         center_standardization_product_validation_role = None
         continuing_edu_admin_role = None
 
@@ -59,6 +61,7 @@ with app.app_context():
     finance_head_permission = Permission() if not head_finance_role else Permission(head_finance_role.to_tuple())
     manager_permission = Permission() if not manager_role else Permission(manager_role.to_tuple())
     secretary_permission = Permission() if not secretary_role else Permission(secretary_role.to_tuple())
+    event_staff_permission = Permission() if not event_staff else Permission(event_staff.to_tuple())
     center_standardization_product_validation_permission = Permission() if not \
         center_standardization_product_validation_role else \
         Permission(center_standardization_product_validation_role.to_tuple())
