@@ -279,11 +279,6 @@ def show_leave_info():
     cum_days = defaultdict(float)
     quota_days = defaultdict(float)
     pending_days = defaultdict(float)
-    approved_request_counts = {
-        'ลากิจ': 0,
-        'ลาป่วย': 0,
-        'ลาพักร้อน': 0,
-    }
     for req in current_user.leave_requests:
         used_quota = current_user.personal_info.get_total_leaves(req.quota.id,
                                                                  tz.localize(START_FISCAL_DATE),
@@ -293,12 +288,6 @@ def show_leave_info():
         pending_day = current_user.personal_info.get_total_pending_leaves_request \
             (req.quota.id, tz.localize(START_FISCAL_DATE), tz.localize(END_FISCAL_DATE))
         pending_days[leave_type] = pending_day
-        if (req.start_datetime and tz.localize(START_FISCAL_DATE) <= req.start_datetime <= tz.localize(END_FISCAL_DATE)
-                and not req.cancelled_at and any(approval.is_approved for approval in req.approvals)):
-            if leave_type in ('ลากิจ', 'ลาป่วย'):
-                approved_request_counts[leave_type] += 1
-            elif leave_type == 'ลาพักผ่อน':
-                approved_request_counts['ลาพักร้อน'] += 1
     for quota in current_user.personal_info.employment.quota:
         quota_limit = calculate_leave_quota_limit(current_user.id, quota.id, datetime.today())
         can_request = quota.leave_type.requester_self_added
@@ -310,7 +299,6 @@ def show_leave_info():
                            line_profile=session.get('line_profile'),
                            cum_days=cum_days,
                            pending_days=pending_days,
-                           approved_request_counts=approved_request_counts,
                            quota_days=quota_days,
                            is_approver=is_approver, approvers=approvers)
 
