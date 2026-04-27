@@ -4148,9 +4148,10 @@ def seminar_attends_each_person():
 def seminar_attends_each_person_details(staff_account_id):
     account = StaffAccount.query.filter_by(id=staff_account_id).first()
     START_FISCAL_DATE, END_FISCAL_DATE = get_fiscal_date(datetime.today())
-    attends = StaffSeminarAttend.query.filter_by(staff_account_id=staff_account_id).filter(and_(
-                StaffSeminarAttend.end_datetime >= START_FISCAL_DATE),
-                StaffSeminarAttend.start_datetime <= END_FISCAL_DATE).all()
+    attends = StaffSeminarAttend.query.filter_by(staff_account_id=staff_account_id).filter(
+        func.date(StaffSeminarAttend.end_datetime) >= START_FISCAL_DATE.date(),
+        func.date(StaffSeminarAttend.start_datetime) <= END_FISCAL_DATE.date()
+    ).all()
     current_fee = 0
     for a in attends:
         if a.budget:
@@ -4165,11 +4166,12 @@ def seminar_attends_each_person_details(staff_account_id):
         form = request.form
         selected_dates = request.form.get('dates', None)
         start_dt, end_dt = form.get('dates').split(' - ')
-        start_date = datetime.strptime(start_dt, '%d/%m/%Y')
-        end_date = datetime.strptime(end_dt, '%d/%m/%Y')
-        attends_query = StaffSeminarAttend.query.filter_by(staff_account_id=staff_account_id).filter(and_(
-                                                                StaffSeminarAttend.end_datetime >= start_date,
-                                                                StaffSeminarAttend.start_datetime <= end_date))
+        start_date = datetime.strptime(start_dt, '%d/%m/%Y').date()
+        end_date = datetime.strptime(end_dt, '%d/%m/%Y').date()
+        attends_query = StaffSeminarAttend.query.filter_by(staff_account_id=staff_account_id).filter(
+            func.date(StaffSeminarAttend.end_datetime) >= start_date,
+            func.date(StaffSeminarAttend.start_datetime) <= end_date
+        )
         total_fee = 0
         for attend in attends_query:
             if attend.budget:
@@ -4182,9 +4184,10 @@ def seminar_attends_each_person_details(staff_account_id):
 @login_required
 def current_seminar_attends(staff_account_id):
     START_FISCAL_DATE, END_FISCAL_DATE = get_fiscal_date(datetime.today())
-    attends = StaffSeminarAttend.query.filter_by(staff_account_id=staff_account_id).filter(and_(
-                        StaffSeminarAttend.end_datetime >= START_FISCAL_DATE,
-                        StaffSeminarAttend.start_datetime <= END_FISCAL_DATE)).all()
+    attends = StaffSeminarAttend.query.filter_by(staff_account_id=staff_account_id).filter(
+        func.date(StaffSeminarAttend.end_datetime) >= START_FISCAL_DATE.date(),
+        func.date(StaffSeminarAttend.start_datetime) <= END_FISCAL_DATE.date()
+    ).all()
     total_fee = 0
     for a in attends:
         if a.budget:
